@@ -133,6 +133,23 @@ function attemptCompile(command, args) {
   });
 }
 
+const vfsOverlayPath = path.join(projectRoot, "resources", "vfs-overlay.yaml");
+const emptyModulemapPath = path.join(projectRoot, "resources", "empty.modulemap");
+if (!fs.existsSync(emptyModulemapPath)) {
+  fs.writeFileSync(emptyModulemapPath, "// Empty modulemap to prevent duplicate SwiftBridging module definition\n", "utf8");
+}
+const vfsOverlayContent = `version: 0
+use-external-names: false
+roots:
+  - name: "/Library/Developer/CommandLineTools/usr/include/swift"
+    type: directory
+    contents:
+      - name: "module.modulemap"
+        type: file
+        external-contents: "${emptyModulemapPath}"
+`;
+fs.writeFileSync(vfsOverlayPath, vfsOverlayContent, "utf8");
+
 const compileArgs = [
   swiftSource,
   "-O",
@@ -142,6 +159,8 @@ const compileArgs = [
   moduleCacheDir,
   "-o",
   outputBinary,
+  "-vfsoverlay",
+  vfsOverlayPath,
 ];
 
 let result = attemptCompile("xcrun", ["swiftc", ...compileArgs]);
