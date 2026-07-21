@@ -284,6 +284,21 @@ export default function ControlPanelSidebar({
           }
         />
 
+        <button
+          onClick={() => {
+            localStorage.removeItem("onboardingCompleted");
+            localStorage.removeItem("onboardingCurrentStep");
+            localStorage.removeItem("authenticationSkipped");
+            localStorage.removeItem("skipAuth");
+            window.location.reload();
+          }}
+          aria-label="Start Onboarding"
+          className={rowButtonClass}
+        >
+          <NotebookPen size={15} className={rowIconClass} />
+          <span className={rowLabelClass}>Start Onboarding</span>
+        </button>
+
         {isSignedIn && (
           <>
             <div className="mx-1 h-px bg-border/10 dark:bg-white/6 my-1.5!" />

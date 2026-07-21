@@ -1178,8 +1178,12 @@
         "label": "Language Models"
       },
       "privacyData": {
-        "description": "Privacy, permissions & analytics",
+        "description": "Privacy, local data retention & analytics",
         "label": "Privacy & Data"
+      },
+      "permissions": {
+        "description": "Microphone, accessibility & audio permissions",
+        "label": "Permissions"
       },
       "system": {
         "description": "Updates, storage & developer tools",

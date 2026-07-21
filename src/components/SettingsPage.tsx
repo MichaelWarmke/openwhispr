@@ -41,6 +41,7 @@ import { AUTH_URL, signOut, deleteAccount } from "../lib/auth";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
 import MicrophoneSettings from "./ui/MicrophoneSettings";
 import PermissionCard from "./ui/PermissionCard";
+import PermissionsSection from "./ui/PermissionsSection";
 import PasteToolsInfo from "./ui/PasteToolsInfo";
 import NixOsPasteInfo from "./ui/NixOsPasteInfo";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
@@ -113,6 +114,7 @@ export type SettingsSectionType =
   | "hotkeys"
   | "speechToText"
   | "llms"
+  | "permissions"
   | "privacyData"
   | "system";
 
@@ -2798,68 +2800,18 @@ EOF`,
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
+          </div>
+        );
 
-            {/* Permissions */}
-            <div className="border-t border-border/40 pt-6">
+      case "permissions":
+        return (
+          <div className="space-y-6">
+            <div>
               <SectionHeader
                 title={t("settingsPage.permissions.title")}
                 description={t("settingsPage.permissions.description")}
               />
-
-              <div className="space-y-3">
-                <PermissionCard
-                  icon={Mic}
-                  title={t("settingsPage.permissions.microphoneTitle")}
-                  description={t("settingsPage.permissions.microphoneDescription")}
-                  granted={permissionsHook.micPermissionGranted}
-                  onRequest={permissionsHook.requestMicPermission}
-                  buttonText={t("settingsPage.permissions.grantAccess")}
-                />
-
-                {(platform === "darwin" || canManageSystemAudioInApp(systemAudio)) && (
-                  <>
-                    {platform === "darwin" && (
-                      <PermissionCard
-                        icon={Shield}
-                        title={t("settingsPage.permissions.accessibilityTitle")}
-                        description={t("settingsPage.permissions.accessibilityDescription")}
-                        granted={permissionsHook.accessibilityPermissionGranted}
-                        onRequest={permissionsHook.requestAccessibilityPermission}
-                        buttonText={t("settingsPage.permissions.grantAccess")}
-                      />
-                    )}
-                    {canManageSystemAudioInApp(systemAudio) && (
-                      <PermissionCard
-                        icon={Monitor}
-                        title={t("settingsPage.permissions.systemAudioTitle")}
-                        description={t("settingsPage.permissions.systemAudioDescription")}
-                        granted={systemAudio.granted}
-                        onRequest={systemAudio.request}
-                        buttonText={t("settingsPage.permissions.grantAccess")}
-                        badge={t("settingsPage.permissions.optional")}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-
-              {!permissionsHook.micPermissionGranted && permissionsHook.micPermissionError && (
-                <MicPermissionWarning
-                  error={permissionsHook.micPermissionError}
-                  onOpenSoundSettings={permissionsHook.openSoundInputSettings}
-                  onOpenPrivacySettings={permissionsHook.openMicPrivacySettings}
-                />
-              )}
-
-              {platform === "linux" &&
-                permissionsHook.pasteToolsInfo &&
-                !permissionsHook.pasteToolsInfo.available && (
-                  <PasteToolsInfo
-                    pasteToolsInfo={permissionsHook.pasteToolsInfo}
-                    isChecking={permissionsHook.isCheckingPasteTools}
-                    onCheck={permissionsHook.checkPasteToolsAvailability}
-                  />
-                )}
+              <PermissionsSection permissions={permissionsHook} systemAudio={systemAudio} />
 
               {platform === "darwin" && (
                 <div className="mt-5">

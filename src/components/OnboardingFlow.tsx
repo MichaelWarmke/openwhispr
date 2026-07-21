@@ -12,7 +12,6 @@ import {
   Shield,
   Command,
   Sparkles,
-  UserCircle,
   Users,
 } from "lucide-react";
 import TitleBar from "./TitleBar";
@@ -30,8 +29,6 @@ import { useSystemAudioPermission } from "../hooks/useSystemAudioPermission";
 import { useSettings } from "../hooks/useSettings";
 import { useSettingsStore } from "../stores/settingsStore";
 import LanguageSelector from "./ui/LanguageSelector";
-import AuthenticationStep from "./AuthenticationStep";
-import EmailVerificationStep from "./EmailVerificationStep";
 import { setAgentName as saveAgentName } from "../utils/agentName";
 import {
   formatHotkeyLabel,
@@ -52,7 +49,6 @@ import logger from "../utils/logger";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import { ACCESSIBILITY_SKIPPED_KEY, areRequiredPermissionsMet } from "../utils/permissions";
-import UseCaseStep from "./onboarding/UseCaseStep";
 import MeetingSetupStep from "./onboarding/MeetingSetupStep";
 import FinishStep from "./onboarding/FinishStep";
 import { USE_CASE_IDS } from "./onboarding/useCases";
@@ -62,7 +58,7 @@ import { cloudPost } from "../services/cloudApi";
 const MAX_STEP_INDEX = 7;
 
 // Steps whose primary action is optional — the user can advance without it.
-const SKIPPABLE_STEPS = new Set(["usecase", "voiceAgent", "meeting"]);
+const SKIPPABLE_STEPS = new Set(["voiceAgent", "meeting"]);
 
 interface OnboardingFlowProps {
   onComplete: (options?: { openSettings?: boolean }) => void;
@@ -135,7 +131,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     () => parseHotkeyList(dictationKey)[0] || getDefaultHotkey()
   );
   const [agentName, setAgentName] = useState("OpenWhispr");
-  const [skipAuth, setSkipAuth] = useState(false);
+  const [skipAuth, setSkipAuth] = useState(true);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
   const { isUsingNativeShortcut, isUsingHyprland, hyprlandConfigStatus, supportsPushToTalk } =
@@ -206,8 +202,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const steps = useMemo(() => {
     const list = [
-      { id: "welcome", title: t("onboarding.steps.welcome"), icon: UserCircle },
-      { id: "usecase", title: t("onboarding.steps.useCase"), icon: Sparkles },
       { id: "setup", title: t("onboarding.steps.setup"), icon: Settings },
     ];
     if (!(isSignedIn && !skipAuth)) {
@@ -236,7 +230,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }, [currentStep, steps.length, setCurrentStep]);
 
   // Only show progress for signed-up users after account creation step
-  const showProgress = currentStep > 0;
+  const showProgress = true;
 
   useEffect(() => {
     if (isUsingNativeShortcut && !supportsPushToTalk) {
@@ -258,7 +252,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   useEffect(() => {
     const modelToCheck = localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
-    if (!useLocalWhisper || !modelToCheck) {
+    if (!modelToCheck) {
       setIsModelDownloaded(false);
       return;
     }
@@ -277,7 +271,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     };
 
     checkStatus();
-  }, [useLocalWhisper, whisperModel, parakeetModel, localTranscriptionProvider]);
+  }, [whisperModel, parakeetModel, localTranscriptionProvider]);
 
   // Auto-register default hotkey when entering the activation step
   const activationStepIndex = steps.findIndex((step) => step.id === "activation");
@@ -378,11 +372,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     // via productName-keyed userData), so they never reach this code.
     void window.electronAPI?.markBundleMigrated?.();
 
-    // Non-signed-in users in cloud mode default to BYOK to avoid
-    // "OpenWhispr Cloud requires sign-in" errors.
-    if (!isSignedIn && !useLocalWhisper) {
-      updateTranscriptionSettings({ cloudTranscriptionMode: "byok" });
-    }
+    // Since onboarding setup is local-only, ensure useLocalWhisper is enabled
+    updateTranscriptionSettings({ useLocalWhisper: true });
 
     try {
       await window.electronAPI?.saveAllKeysToEnv?.();
@@ -420,16 +411,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       !permissionsHook.accessibilityPermissionGranted
     ) {
       setAccessibilitySkipped(true);
-    }
-
-    // Fire-and-forget intent sync — must never block onboarding.
-    if (currentStepId === "usecase" && isSignedIn && !skipAuth) {
-      cloudPost("/api/onboarding-intent", {
-        useCases: onboardingUseCases,
-        note: onboardingUseCaseNote || undefined,
-      }).catch((error) => {
-        logger.warn("Failed to sync onboarding intent", { error }, "onboarding");
-      });
     }
 
     const newStep = currentStep + 1;
@@ -519,44 +500,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const renderStep = () => {
     switch (currentStepId) {
-      case "welcome":
-        if (pendingVerificationEmail) {
-          return (
-            <EmailVerificationStep
-              email={pendingVerificationEmail}
-              onVerified={() => {
-                setPendingVerificationEmail(null);
-                nextStep();
-              }}
-              onBack={() => setPendingVerificationEmail(null)}
-            />
-          );
-        }
-        return (
-          <AuthenticationStep
-            onContinueWithoutAccount={() => {
-              setSkipAuth(true);
-              nextStep();
-            }}
-            onAuthComplete={() => {
-              nextStep();
-            }}
-            onNeedsVerification={(email) => {
-              setPendingVerificationEmail(email);
-            }}
-          />
-        );
-
-      case "usecase":
-        return (
-          <UseCaseStep
-            useCases={onboardingUseCases}
-            onUseCasesChange={setOnboardingUseCases}
-            note={onboardingUseCaseNote}
-            onNoteChange={setOnboardingUseCaseNote}
-          />
-        );
-
       case "setup": // Choose Mode & Configure (merged with permissions for signed-in users)
         if (isSignedIn && !skipAuth) {
           return (
@@ -652,6 +595,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
               variant="onboarding"
+              mode="local"
             />
 
             {/* Language Selection - shown for both modes */}
@@ -896,40 +840,17 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const canProceed = () => {
     switch (currentStepId) {
-      case "welcome":
-        return isSignedIn || skipAuth;
-      case "usecase":
-        return true; // Selection is optional — Next doubles as skip
       case "setup":
         // For signed-in users: Setup step includes permissions
         if (isSignedIn && !skipAuth) {
           return areRequiredPermissionsMet(permissionsHook.micPermissionGranted);
         }
 
-        // For non-signed-in users: Setup - check if configuration is complete
-        if (useLocalWhisper) {
+        // Since onboarding transcription setup is local-only, check if local model configuration is complete
+        {
           const modelToCheck =
             localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
           return modelToCheck !== "" && isModelDownloaded;
-        } else {
-          // For cloud mode, check if appropriate API key is set
-          if (cloudTranscriptionProvider === "openai") {
-            return openaiApiKey.trim().length > 0;
-          } else if (cloudTranscriptionProvider === "groq") {
-            return groqApiKey.trim().length > 0;
-          } else if (cloudTranscriptionProvider === "xai") {
-            return xaiApiKey.trim().length > 0;
-          } else if (cloudTranscriptionProvider === "mistral") {
-            return mistralApiKey.trim().length > 0;
-          } else if (cloudTranscriptionProvider === "corti") {
-            return cortiClientId.trim().length > 0 && cortiClientSecret.trim().length > 0;
-          } else if (cloudTranscriptionProvider === "tinfoil") {
-            return tinfoilApiKey.trim().length > 0;
-          } else if (cloudTranscriptionProvider === "custom") {
-            // Custom can work without API key for local endpoints
-            return true;
-          }
-          return openaiApiKey.trim().length > 0; // Default to OpenAI
         }
       case "permissions":
         return areRequiredPermissionsMet(permissionsHook.micPermissionGranted);
@@ -998,48 +919,35 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       />
 
       {/* Title Bar / drag region */}
-      {currentStep === 0 ? (
-        <div
-          className="flex items-center justify-end w-full h-10 shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          {onboardingPlatform !== "darwin" && (
-            <div className="pr-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-              <WindowControls />
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="shrink-0 z-10">
-          <TitleBar
-            showTitle={true}
-            className="bg-background backdrop-blur-xl border-b border-border shadow-sm"
-            actions={isSignedIn ? <SupportDropdown /> : undefined}
-            center={
-              onboardingPlatform === "darwin" ? (
-                <StepProgress steps={steps.slice(1)} currentStep={currentStep - 1} />
-              ) : undefined
-            }
-          ></TitleBar>
-        </div>
-      )}
+      <div className="shrink-0 z-10">
+        <TitleBar
+          showTitle={true}
+          className="bg-background backdrop-blur-xl border-b border-border shadow-sm"
+          actions={isSignedIn ? <SupportDropdown /> : undefined}
+          center={
+            onboardingPlatform === "darwin" ? (
+              <StepProgress steps={steps} currentStep={currentStep} />
+            ) : undefined
+          }
+        ></TitleBar>
+      </div>
 
       {/* Progress bar — on macOS it lives centered in the title bar instead */}
       {showProgress && onboardingPlatform !== "darwin" && (
         <div className="shrink-0 bg-background/80 backdrop-blur-2xl border-b border-white/5 px-6 md:px-12 py-3 z-10">
           <div className="max-w-3xl mx-auto">
-            <StepProgress steps={steps.slice(1)} currentStep={currentStep - 1} />
+            <StepProgress steps={steps} currentStep={currentStep} />
           </div>
         </div>
       )}
 
       {/* Content - This will grow to fill available space */}
       <div
-        className={`flex-1 px-6 md:px-12 overflow-y-auto ${currentStep === 0 ? "flex items-center" : "py-6"}`}
+        className="flex-1 px-6 md:px-12 overflow-y-auto py-6"
       >
-        <div className={`w-full ${currentStep === 0 ? "max-w-sm" : "max-w-3xl"} mx-auto`}>
+        <div className="w-full max-w-3xl mx-auto">
           <Card className="bg-card/90 backdrop-blur-2xl border border-border/50 dark:border-white/5 shadow-lg rounded-xl overflow-hidden">
-            <CardContent className={currentStep === 0 ? "p-6" : "p-6 md:p-8"}>
+            <CardContent className="p-6 md:p-8">
               {renderStep()}
             </CardContent>
           </Card>

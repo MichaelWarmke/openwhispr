@@ -31,7 +31,6 @@ const SECTION_ALIASES: Record<string, SettingsSectionType> = {
   uploadTranscription: "speechToText",
   softwareUpdates: "system",
   privacy: "privacyData",
-  permissions: "privacyData",
   developer: "system",
 };
 
@@ -89,6 +88,13 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
         label: t("settingsModal.sections.privacyData.label"),
         icon: Shield,
         description: t("settingsModal.sections.privacyData.description"),
+        group: t("settingsModal.groups.system"),
+      },
+      {
+        id: "permissions",
+        label: t("settingsModal.sections.permissions.label"),
+        icon: Shield,
+        description: t("settingsModal.sections.permissions.description"),
         group: t("settingsModal.groups.system"),
       },
       {
