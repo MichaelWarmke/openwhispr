@@ -7,7 +7,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Check,
-  Flag,
   Settings,
   Shield,
   Command,
@@ -215,7 +214,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     if (showMeetingStep) {
       list.push({ id: "meeting", title: t("onboarding.steps.meeting"), icon: Users });
     }
-    list.push({ id: "finish", title: t("onboarding.steps.finish"), icon: Flag });
     return list;
   }, [isSignedIn, skipAuth, showMeetingStep, t]);
 
@@ -987,12 +985,20 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     </Button>
                   )}
                   <Button
-                    onClick={nextStep}
+                    onClick={() => {
+                      if (currentStep >= steps.length - 1) {
+                        void finishOnboarding();
+                      } else {
+                        void nextStep();
+                      }
+                    }}
                     disabled={!canProceed()}
                     className="h-8 px-6 rounded-full text-xs"
                   >
-                    {t("common.next")}
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    {currentStep >= steps.length - 1
+                      ? t("onboarding.steps.finish")
+                      : t("common.next")}
+                    {currentStep < steps.length - 1 && <ChevronRight className="w-3.5 h-3.5" />}
                   </Button>
                 </>
               )}
