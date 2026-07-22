@@ -809,10 +809,12 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         localTranscriptionProvider,
         whisperModel,
         parakeetModel,
+        huggingFaceModel,
       } = getSettings();
-      const isNvidia = localTranscriptionProvider === "nvidia";
+      const isNvidia = localTranscriptionProvider === "nvidia" || localTranscriptionProvider === "huggingface";
+      const actualParakeetModel = localTranscriptionProvider === "huggingface" ? (huggingFaceModel || "parakeet-rnnt-1.1b") : (parakeetModel || "parakeet-tdt-0.6b-v3");
       // Online models stream+commit during capture, so PCM runs even with preview off.
-      const streamingCommit = useLocalWhisper && isNvidia && isOnlineParakeetModel(parakeetModel);
+      const streamingCommit = useLocalWhisper && isNvidia && isOnlineParakeetModel(actualParakeetModel);
       this._streamingCommitActive = false;
       if (useLocalWhisper && (showTranscriptionPreview || streamingCommit)) {
         try {
@@ -834,7 +836,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
           this._previewSource.connect(this._previewProcessor);
 
           const provider = isNvidia ? "nvidia" : "whisper";
-          const model = isNvidia ? parakeetModel : whisperModel;
+          const model = isNvidia ? actualParakeetModel : whisperModel;
           const language = getBaseLanguageCode(getSettings().preferredLanguage);
           window.electronAPI?.startDictationPreview?.({
             provider,
@@ -989,6 +991,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       const localProvider = settings.localTranscriptionProvider;
       const whisperModel = settings.whisperModel;
       const parakeetModel = settings.parakeetModel || "parakeet-tdt-0.6b-v3";
+      const huggingFaceModel = settings.huggingFaceModel || "parakeet-rnnt-1.1b";
 
       const cloudTranscriptionMode = settings.cloudTranscriptionMode;
       const isSignedIn = settings.isSignedIn;
@@ -1004,9 +1007,10 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       let result;
       let activeModel;
       if (useLocalWhisper) {
-        if (localProvider === "nvidia") {
-          activeModel = parakeetModel;
-          result = await this.processWithLocalParakeet(audioBlob, parakeetModel, metadata);
+        if (localProvider === "nvidia" || localProvider === "huggingface") {
+          const model = localProvider === "huggingface" ? huggingFaceModel : parakeetModel;
+          activeModel = model;
+          result = await this.processWithLocalParakeet(audioBlob, model, metadata);
         } else {
           activeModel = whisperModel;
           result = await this.processWithLocalWhisper(audioBlob, whisperModel, metadata);

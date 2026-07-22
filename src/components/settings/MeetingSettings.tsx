@@ -42,6 +42,8 @@ export function MeetingTranscriptionPanel() {
     setMeetingLocalTranscriptionProvider,
     meetingParakeetModel,
     setMeetingParakeetModel,
+    meetingHuggingFaceModel,
+    setMeetingHuggingFaceModel,
     meetingCloudTranscriptionProvider,
     setMeetingCloudTranscriptionProvider,
     meetingCloudTranscriptionModel,
@@ -80,14 +82,17 @@ export function MeetingTranscriptionPanel() {
   };
 
   const handleLocalTranscriptionModelSelect = useCallback(
-    (modelId: string) => {
-      if (meetingLocalTranscriptionProvider === "nvidia") {
+    (modelId: string, provider?: string) => {
+      const activeProv = provider || meetingLocalTranscriptionProvider;
+      if (activeProv === "huggingface") {
+        setMeetingHuggingFaceModel(modelId);
+      } else if (activeProv === "nvidia") {
         setMeetingParakeetModel(modelId);
       } else {
         setMeetingWhisperModel(modelId);
       }
     },
-    [meetingLocalTranscriptionProvider, setMeetingParakeetModel, setMeetingWhisperModel]
+    [meetingLocalTranscriptionProvider, setMeetingHuggingFaceModel, setMeetingParakeetModel, setMeetingWhisperModel]
   );
 
   const renderTranscriptionPicker = (mode: "cloud" | "local") => (
@@ -98,7 +103,11 @@ export function MeetingTranscriptionPanel() {
       selectedCloudModel={meetingCloudTranscriptionModel}
       onCloudModelSelect={setMeetingCloudTranscriptionModel}
       selectedLocalModel={
-        meetingLocalTranscriptionProvider === "nvidia" ? meetingParakeetModel : meetingWhisperModel
+        meetingLocalTranscriptionProvider === "huggingface"
+          ? (meetingHuggingFaceModel || meetingParakeetModel || "parakeet-rnnt-1.1b")
+          : meetingLocalTranscriptionProvider === "nvidia"
+          ? (meetingParakeetModel || "parakeet-tdt-0.6b-v3")
+          : (meetingWhisperModel || "base")
       }
       onLocalModelSelect={handleLocalTranscriptionModelSelect}
       selectedLocalProvider={meetingLocalTranscriptionProvider}

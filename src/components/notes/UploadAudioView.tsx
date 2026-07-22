@@ -241,6 +241,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     whisperModel,
     localTranscriptionProvider,
     parakeetModel,
+    huggingFaceModel,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -366,7 +367,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         }
         return;
       }
-      if (localTranscriptionProvider === "nvidia") {
+      if (localTranscriptionProvider === "nvidia" || localTranscriptionProvider === "huggingface") {
         const r = await window.electronAPI.listParakeetModels?.();
         if (!cancelled)
           setProviderReady(
@@ -405,6 +406,8 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const getActiveModelLabel = (): string => {
     if (isOpenWhisprCloud) return t("notes.upload.openwhisprCloud");
     if (useLocalWhisper) {
+      if (localTranscriptionProvider === "huggingface")
+        return `Parakeet (HF) · ${huggingFaceModel || "default"}`;
       if (localTranscriptionProvider === "nvidia")
         return `Parakeet · ${parakeetModel || "default"}`;
       return `Whisper · ${whisperModel || "base"}`;
@@ -445,6 +448,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     localTranscriptionProvider: localTranscriptionProvider as string,
     whisperModel,
     parakeetModel,
+    huggingFaceModel,
     isOpenWhisprCloud,
     getApiKey: getActiveApiKey,
     cloudTranscriptionProvider: cloudTranscriptionProvider as string,

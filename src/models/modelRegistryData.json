@@ -1,5 +1,43 @@
 {
   "parakeetModels": {
+    "parakeet-rnnt-1.1b": {
+      "name": "Parakeet RNNT 1.1B",
+      "description": "High-accuracy NVIDIA Parakeet 1.1B model downloaded directly from HuggingFace",
+      "size": "680MB",
+      "sizeMb": 680,
+      "language": "multilingual",
+      "supportedLanguages": [
+        "bg",
+        "hr",
+        "cs",
+        "da",
+        "nl",
+        "en",
+        "et",
+        "fi",
+        "fr",
+        "de",
+        "el",
+        "hu",
+        "it",
+        "lv",
+        "lt",
+        "mt",
+        "pl",
+        "pt",
+        "ro",
+        "sk",
+        "sl",
+        "es",
+        "sv",
+        "ru",
+        "uk"
+      ],
+      "huggingFaceRepo": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "downloadUrl": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "extractDir": "",
+      "descriptionKey": "models.descriptions.parakeet.parakeet_rnnt_1_1b"
+    },
     "parakeet-tdt-0.6b-v3": {
       "name": "Parakeet TDT 0.6B",
       "description": "Fast multilingual ASR with auto language detection",

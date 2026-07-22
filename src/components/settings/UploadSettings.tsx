@@ -23,6 +23,8 @@ export function UploadTranscriptionPanel() {
     setUploadLocalTranscriptionProvider,
     uploadParakeetModel,
     setUploadParakeetModel,
+    uploadHuggingFaceModel,
+    setUploadHuggingFaceModel,
     uploadCloudTranscriptionProvider,
     setUploadCloudTranscriptionProvider,
     uploadCloudTranscriptionModel,
@@ -53,14 +55,17 @@ export function UploadTranscriptionPanel() {
   };
 
   const handleLocalTranscriptionModelSelect = useCallback(
-    (modelId: string) => {
-      if (uploadLocalTranscriptionProvider === "nvidia") {
+    (modelId: string, provider?: string) => {
+      const activeProv = provider || uploadLocalTranscriptionProvider;
+      if (activeProv === "huggingface") {
+        setUploadHuggingFaceModel(modelId);
+      } else if (activeProv === "nvidia") {
         setUploadParakeetModel(modelId);
       } else {
         setUploadWhisperModel(modelId);
       }
     },
-    [uploadLocalTranscriptionProvider, setUploadParakeetModel, setUploadWhisperModel]
+    [uploadLocalTranscriptionProvider, setUploadHuggingFaceModel, setUploadParakeetModel, setUploadWhisperModel]
   );
 
   const renderTranscriptionPicker = (mode: "cloud" | "local") => (
@@ -70,7 +75,11 @@ export function UploadTranscriptionPanel() {
       selectedCloudModel={uploadCloudTranscriptionModel}
       onCloudModelSelect={setUploadCloudTranscriptionModel}
       selectedLocalModel={
-        uploadLocalTranscriptionProvider === "nvidia" ? uploadParakeetModel : uploadWhisperModel
+        uploadLocalTranscriptionProvider === "huggingface"
+          ? (uploadHuggingFaceModel || uploadParakeetModel || "parakeet-rnnt-1.1b")
+          : uploadLocalTranscriptionProvider === "nvidia"
+          ? (uploadParakeetModel || "parakeet-tdt-0.6b-v3")
+          : (uploadWhisperModel || "base")
       }
       onLocalModelSelect={handleLocalTranscriptionModelSelect}
       selectedLocalProvider={uploadLocalTranscriptionProvider}

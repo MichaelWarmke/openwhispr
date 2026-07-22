@@ -96,6 +96,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     whisperModel,
     localTranscriptionProvider,
     parakeetModel,
+    huggingFaceModel,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -249,7 +250,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }, []);
 
   useEffect(() => {
-    const modelToCheck = localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
+    const modelToCheck = localTranscriptionProvider === "huggingface" ? huggingFaceModel : localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
     if (!modelToCheck) {
       setIsModelDownloaded(false);
       return;
@@ -258,7 +259,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     const checkStatus = async () => {
       try {
         const result =
-          localTranscriptionProvider === "nvidia"
+          localTranscriptionProvider === "nvidia" || localTranscriptionProvider === "huggingface"
             ? await window.electronAPI?.checkParakeetModelStatus(modelToCheck)
             : await window.electronAPI?.checkModelStatus(modelToCheck);
         setIsModelDownloaded(result?.downloaded ?? false);
@@ -269,7 +270,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     };
 
     checkStatus();
-  }, [whisperModel, parakeetModel, localTranscriptionProvider]);
+  }, [whisperModel, parakeetModel, huggingFaceModel, localTranscriptionProvider]);
 
   // Auto-register default hotkey when entering the activation step
   const activationStepIndex = steps.findIndex((step) => step.id === "activation");
@@ -566,10 +567,17 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionModel: model })
               }
               selectedLocalModel={
-                localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel
+                localTranscriptionProvider === "huggingface"
+                  ? (huggingFaceModel || "parakeet-rnnt-1.1b")
+                  : localTranscriptionProvider === "nvidia"
+                  ? (parakeetModel || "parakeet-tdt-0.6b-v3")
+                  : (whisperModel || "base")
               }
-              onLocalModelSelect={(modelId) => {
-                if (localTranscriptionProvider === "nvidia") {
+              onLocalModelSelect={(modelId, provider) => {
+                const activeProv = provider || localTranscriptionProvider;
+                if (activeProv === "huggingface") {
+                  updateTranscriptionSettings({ huggingFaceModel: modelId });
+                } else if (activeProv === "nvidia") {
                   updateTranscriptionSettings({ parakeetModel: modelId });
                 } else {
                   updateTranscriptionSettings({ whisperModel: modelId });
@@ -578,7 +586,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               selectedLocalProvider={localTranscriptionProvider}
               onLocalProviderSelect={(provider) =>
                 updateTranscriptionSettings({
-                  localTranscriptionProvider: provider as "whisper" | "nvidia",
+                  localTranscriptionProvider: provider as "whisper" | "nvidia" | "huggingface",
                 })
               }
               useLocalWhisper={useLocalWhisper}
@@ -847,7 +855,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         // Since onboarding transcription setup is local-only, check if local model configuration is complete
         {
           const modelToCheck =
-            localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
+            localTranscriptionProvider === "huggingface" ? huggingFaceModel : localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
           return modelToCheck !== "" && isModelDownloaded;
         }
       case "permissions":

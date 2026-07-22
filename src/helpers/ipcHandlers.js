@@ -1824,7 +1824,7 @@ class IPCHandlers {
         const real = resolveAllowedAudioPath(filePath);
         if (!real) return { success: false, error: "File path not allowed" };
         const audioBuffer = fs.readFileSync(real);
-        if (options.provider === "nvidia") {
+        if (options.provider === "nvidia" || options.provider === "huggingface") {
           const result = await this.parakeetManager.transcribeLocalParakeet(audioBuffer, options);
           return result;
         }
@@ -3497,8 +3497,8 @@ class IPCHandlers {
       if (prefs.useLocalWhisper && prefs.model) {
         // Local mode with model selected - set provider and model for pre-warming
         setVars.LOCAL_TRANSCRIPTION_PROVIDER = prefs.localTranscriptionProvider;
-        if (prefs.localTranscriptionProvider === "nvidia") {
-          setVars.PARAKEET_MODEL = prefs.model;
+        if (prefs.localTranscriptionProvider === "nvidia" || prefs.localTranscriptionProvider === "huggingface") {
+          setVars.PARAKEET_MODEL = prefs.localTranscriptionProvider === "huggingface" ? prefs.huggingFaceModel : prefs.model;
           clearVars.push("LOCAL_WHISPER_MODEL");
           this.whisperManager.stopServer().catch((err) => {
             debugLogger.error("Failed to stop whisper-server on provider switch", {
@@ -4343,9 +4343,10 @@ class IPCHandlers {
             };
           }
         } else if (settings?.useLocalWhisper) {
-          if (settings.localTranscriptionProvider === "nvidia") {
-            const model =
-              settings.parakeetModel || process.env.PARAKEET_MODEL || "parakeet-tdt-0.6b-v3";
+          if (settings.localTranscriptionProvider === "nvidia" || settings.localTranscriptionProvider === "huggingface") {
+            const model = settings.localTranscriptionProvider === "huggingface" 
+              ? (settings.huggingFaceModel || process.env.HUGGINGFACE_MODEL || "parakeet-rnnt-1.1b")
+              : (settings.parakeetModel || process.env.PARAKEET_MODEL || "parakeet-tdt-0.6b-v3");
             result = await this.parakeetManager.transcribeLocalParakeet(buffer, { model });
           } else if (this.whisperManager?.serverManager?.isAvailable?.()) {
             const vadOptions = this._resolveWhisperVadOptions("noteRecording");
@@ -5672,7 +5673,7 @@ class IPCHandlers {
 
       try {
         let result;
-        if (meetingLocalProvider === "nvidia") {
+        if (meetingLocalProvider === "nvidia" || meetingLocalProvider === "huggingface") {
           result = await this.parakeetManager.transcribeLocalParakeet(wav, {
             model: meetingLocalModel,
           });
@@ -5933,7 +5934,7 @@ class IPCHandlers {
         const wav = pcm16ToWav(pcm);
 
         let result;
-        if (dictationPreviewProvider === "nvidia") {
+        if (dictationPreviewProvider === "nvidia" || dictationPreviewProvider === "huggingface") {
           result = await this.parakeetManager.transcribeLocalParakeet(wav, {
             model: dictationPreviewModel,
           });
@@ -6602,7 +6603,7 @@ class IPCHandlers {
         dictationPreviewChunkCount = 0;
         if (display) this.windowManager.showTranscriptionPreview("");
 
-        if (provider === "nvidia" && this.parakeetManager.supportsOnlineStreaming(model)) {
+        if ((provider === "nvidia" || provider === "huggingface") && this.parakeetManager.supportsOnlineStreaming(model)) {
           try {
             const stream = await this.parakeetManager.createOnlineStream(model, {
               onUpdate: (text) => {

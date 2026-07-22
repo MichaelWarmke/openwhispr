@@ -21,6 +21,7 @@ export interface FileTranscriptionConfig {
   localTranscriptionProvider: string;
   whisperModel: string;
   parakeetModel: string;
+  huggingFaceModel: string;
   isOpenWhisprCloud: boolean;
   getApiKey: () => string;
   cloudTranscriptionProvider: string;
@@ -55,8 +56,8 @@ export async function transcribeFile(
 
   if (cfg.useLocalWhisper) {
     return window.electronAPI.transcribeAudioFile(filePath, {
-      provider: cfg.localTranscriptionProvider as "whisper" | "nvidia",
-      model: cfg.localTranscriptionProvider === "nvidia" ? cfg.parakeetModel : cfg.whisperModel,
+      provider: cfg.localTranscriptionProvider as "whisper" | "nvidia" | "huggingface",
+      model: cfg.localTranscriptionProvider === "huggingface" ? cfg.huggingFaceModel : (cfg.localTranscriptionProvider === "nvidia" ? cfg.parakeetModel : cfg.whisperModel),
     });
   }
 

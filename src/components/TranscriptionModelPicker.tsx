@@ -188,7 +188,7 @@ interface TranscriptionModelPickerProps {
   selectedCloudModel: string;
   onCloudModelSelect: (modelId: string) => void;
   selectedLocalModel: string;
-  onLocalModelSelect: (modelId: string) => void;
+  onLocalModelSelect: (modelId: string, provider?: "whisper" | "nvidia" | "huggingface") => void;
   selectedLocalProvider?: string;
   onLocalProviderSelect?: (providerId: string) => void;
   useLocalWhisper: boolean;
@@ -283,6 +283,7 @@ const TINFOIL_AUDIO_DOCS_URL = "https://docs.tinfoil.sh/models/audio";
 const LOCAL_PROVIDER_TABS: Array<{ id: string; name: string; disabled?: boolean }> = [
   { id: "whisper", name: "OpenAI" },
   { id: "nvidia", name: "NVIDIA" },
+  { id: "huggingface", name: "Hugging Face" },
 ];
 
 interface ModeToggleProps {
@@ -415,13 +416,14 @@ export default function TranscriptionModelPicker({
     const current = selectedLocalModelRef.current;
     if (!current) return;
 
+    const isKnownModel = Boolean(WHISPER_MODEL_INFO[current] || PARAKEET_MODEL_INFO[current]);
+    if (isKnownModel) return;
+
     const downloaded = loadedModels.filter((m) => m.downloaded);
     const isCurrentDownloaded = loadedModels.find((m) => m.model === current)?.downloaded;
 
     if (!isCurrentDownloaded && downloaded.length > 0) {
       onLocalModelSelectRef.current(downloaded[0].model);
-    } else if (!isCurrentDownloaded && downloaded.length === 0) {
-      onLocalModelSelectRef.current("");
     }
   }, []);
 
@@ -515,7 +517,10 @@ export default function TranscriptionModelPicker({
     if (internalLocalProvider === "whisper" && !hasLoadedRef.current) {
       hasLoadedRef.current = true;
       loadLocalModelsRef.current?.();
-    } else if (internalLocalProvider === "nvidia" && !hasLoadedParakeetRef.current) {
+    } else if (
+      (internalLocalProvider === "nvidia" || internalLocalProvider === "huggingface") &&
+      !hasLoadedParakeetRef.current
+    ) {
       hasLoadedParakeetRef.current = true;
       loadParakeetModelsRef.current?.();
     }
@@ -656,25 +661,26 @@ export default function TranscriptionModelPicker({
       const tab = LOCAL_PROVIDER_TABS.find((t) => t.id === providerId);
       if (tab?.disabled) return;
       setInternalLocalProvider(providerId);
-      onLocalProviderSelect?.(providerId);
     },
-    [onLocalProviderSelect]
+    []
   );
 
   const handleWhisperModelSelect = useCallback(
     (modelId: string) => {
       onLocalProviderSelect?.("whisper");
       setInternalLocalProvider("whisper");
-      onLocalModelSelect(modelId);
+      onLocalModelSelect(modelId, "whisper");
     },
     [onLocalModelSelect, onLocalProviderSelect]
   );
 
   const handleParakeetModelSelect = useCallback(
     (modelId: string) => {
-      onLocalProviderSelect?.("nvidia");
-      setInternalLocalProvider("nvidia");
-      onLocalModelSelect(modelId);
+      const info = PARAKEET_MODEL_INFO[modelId];
+      const provider = info && (info as any).huggingFaceRepo ? "huggingface" : "nvidia";
+      onLocalProviderSelect?.(provider);
+      setInternalLocalProvider(provider);
+      onLocalModelSelect(modelId, provider);
     },
     [onLocalModelSelect, onLocalProviderSelect]
   );
@@ -831,6 +837,10 @@ export default function TranscriptionModelPicker({
             recommended: false,
           };
 
+          const activeProvider = selectedLocalProvider || internalLocalProvider;
+          const isCardSelected =
+            modelId === selectedLocalModel && activeProvider === "whisper";
+
           return (
             <LocalModelCard
               key={modelId}
@@ -839,7 +849,7 @@ export default function TranscriptionModelPicker({
               description={info.description}
               size={info.size}
               actualSizeMb={model.size_mb}
-              isSelected={modelId === selectedLocalModel}
+              isSelected={isCardSelected}
               isDownloaded={model.downloaded ?? false}
               isDownloading={isDownloadingModel(modelId)}
               isCancelling={isCancelling}
@@ -884,8 +894,8 @@ export default function TranscriptionModelPicker({
     [showConfirmDialog, deleteParakeetModel, t]
   );
 
-  const renderParakeetModels = () => {
-    const modelsToRender =
+  const renderNvidiaModels = () => {
+    const allModels =
       parakeetModels.length === 0
         ? Object.entries(PARAKEET_MODEL_INFO).map(([modelId, info]) => ({
             model: modelId,
@@ -893,6 +903,13 @@ export default function TranscriptionModelPicker({
             size_mb: info.sizeMb,
           }))
         : parakeetModels;
+
+    const modelsToRender = allModels.filter((model) => {
+      const info = PARAKEET_MODEL_INFO[model.model];
+      return !(info && (info as any).huggingFaceRepo);
+    });
+
+    const activeProvider = selectedLocalProvider || internalLocalProvider;
 
     return (
       <div className="space-y-0.5">
@@ -906,6 +923,9 @@ export default function TranscriptionModelPicker({
             recommended: false,
           };
 
+          const isCardSelected =
+            modelId === selectedLocalModel && activeProvider === "nvidia";
+
           return (
             <LocalModelCard
               key={modelId}
@@ -914,13 +934,79 @@ export default function TranscriptionModelPicker({
               description={info.description}
               size={info.size}
               actualSizeMb={model.size_mb}
-              isSelected={modelId === selectedLocalModel}
+              isSelected={isCardSelected}
               isDownloaded={model.downloaded ?? false}
               isDownloading={isDownloadingParakeetModel(modelId)}
               isCancelling={isCancellingParakeet}
               isInstalling={isInstallingParakeet}
               recommended={info.recommended}
               provider="nvidia"
+              onSelect={() => handleParakeetModelSelect(modelId)}
+              onDelete={() => handleParakeetDelete(modelId)}
+              onDownload={() =>
+                downloadParakeetModel(modelId, (downloadedId) => {
+                  setParakeetModels((prev) =>
+                    prev.map((m) => (m.model === downloadedId ? { ...m, downloaded: true } : m))
+                  );
+                  handleParakeetModelSelect(downloadedId);
+                })
+              }
+              onCancel={cancelParakeetDownload}
+              styles={styles}
+            />
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderHuggingFaceModels = () => {
+    const allModels =
+      parakeetModels.length === 0
+        ? Object.entries(PARAKEET_MODEL_INFO).map(([modelId, info]) => ({
+            model: modelId,
+            downloaded: false,
+            size_mb: info.sizeMb,
+          }))
+        : parakeetModels;
+
+    const modelsToRender = allModels.filter((model) => {
+      const info = PARAKEET_MODEL_INFO[model.model];
+      return Boolean(info && (info as any).huggingFaceRepo);
+    });
+
+    const activeProvider = selectedLocalProvider || internalLocalProvider;
+
+    return (
+      <div className="space-y-0.5">
+        {modelsToRender.map((model) => {
+          const modelId = model.model;
+          const info = PARAKEET_MODEL_INFO[modelId] ?? {
+            name: modelId,
+            description: t("transcription.fallback.parakeetModelDescription"),
+            size: t("common.unknown"),
+            language: "en",
+            recommended: false,
+          };
+
+          const isCardSelected =
+            modelId === selectedLocalModel && activeProvider === "huggingface";
+
+          return (
+            <LocalModelCard
+              key={modelId}
+              modelId={modelId}
+              name={info.name}
+              description={info.description}
+              size={info.size}
+              actualSizeMb={model.size_mb}
+              isSelected={isCardSelected}
+              isDownloaded={model.downloaded ?? false}
+              isDownloading={isDownloadingParakeetModel(modelId)}
+              isCancelling={isCancellingParakeet}
+              isInstalling={isInstallingParakeet}
+              recommended={info.recommended}
+              provider="huggingface"
               onSelect={() => handleParakeetModelSelect(modelId)}
               onDelete={() => handleParakeetDelete(modelId)}
               onDownload={() =>
@@ -1144,7 +1230,8 @@ export default function TranscriptionModelPicker({
 
           <div>
             {internalLocalProvider === "whisper" && renderLocalModels()}
-            {internalLocalProvider === "nvidia" && renderParakeetModels()}
+            {internalLocalProvider === "nvidia" && renderNvidiaModels()}
+            {internalLocalProvider === "huggingface" && renderHuggingFaceModels()}
           </div>
         </>
       )}

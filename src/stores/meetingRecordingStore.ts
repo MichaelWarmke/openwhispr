@@ -118,7 +118,9 @@ const getMeetingTranscriptionOptions = () => {
       provider: "local" as const,
       localProvider: resolved.localTranscriptionProvider,
       localModel:
-        resolved.localTranscriptionProvider === "nvidia"
+        resolved.localTranscriptionProvider === "huggingface"
+          ? resolved.huggingFaceModel || "parakeet-rnnt-1.1b"
+          : resolved.localTranscriptionProvider === "nvidia"
           ? resolved.parakeetModel || "parakeet-tdt-0.6b-v3"
           : resolved.whisperModel || "base",
       language,

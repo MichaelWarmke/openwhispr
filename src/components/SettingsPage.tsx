@@ -208,6 +208,8 @@ interface TranscriptionSectionProps {
   setWhisperModel: (model: string) => void;
   parakeetModel: string;
   setParakeetModel: (model: string) => void;
+  huggingFaceModel: string;
+  setHuggingFaceModel: (model: string) => void;
   cloudTranscriptionBaseUrl?: string;
   setCloudTranscriptionBaseUrl: (url: string) => void;
   transcriptionMode: InferenceMode;
@@ -244,6 +246,8 @@ function TranscriptionSection({
   setWhisperModel,
   parakeetModel,
   setParakeetModel,
+  huggingFaceModel,
+  setHuggingFaceModel,
   cloudTranscriptionBaseUrl,
   setCloudTranscriptionBaseUrl,
   transcriptionMode,
@@ -299,14 +303,17 @@ function TranscriptionSection({
   };
 
   const handleLocalModelSelect = useCallback(
-    (modelId: string) => {
-      if (localTranscriptionProvider === "nvidia") {
+    (modelId: string, provider?: string) => {
+      const activeProv = provider || localTranscriptionProvider;
+      if (activeProv === "huggingface") {
+        setHuggingFaceModel(modelId);
+      } else if (activeProv === "nvidia") {
         setParakeetModel(modelId);
       } else {
         setWhisperModel(modelId);
       }
     },
-    [localTranscriptionProvider, setParakeetModel, setWhisperModel]
+    [localTranscriptionProvider, setHuggingFaceModel, setParakeetModel, setWhisperModel]
   );
 
   const renderPreviewToggle = () => (
@@ -328,7 +335,13 @@ function TranscriptionSection({
       onCloudProviderSelect={setCloudTranscriptionProvider}
       selectedCloudModel={cloudTranscriptionModel}
       onCloudModelSelect={setCloudTranscriptionModel}
-      selectedLocalModel={localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel}
+      selectedLocalModel={
+        localTranscriptionProvider === "huggingface"
+          ? (huggingFaceModel || "parakeet-rnnt-1.1b")
+          : localTranscriptionProvider === "nvidia"
+          ? (parakeetModel || "parakeet-tdt-0.6b-v3")
+          : (whisperModel || "base")
+      }
       onLocalModelSelect={handleLocalModelSelect}
       selectedLocalProvider={localTranscriptionProvider}
       onLocalProviderSelect={setLocalTranscriptionProvider}
@@ -694,6 +707,7 @@ export default function SettingsPage({
     whisperModel,
     localTranscriptionProvider,
     parakeetModel,
+    huggingFaceModel,
     uiLanguage,
     preferredLanguage,
     cloudTranscriptionProvider,
@@ -713,6 +727,7 @@ export default function SettingsPage({
     setWhisperModel,
     setLocalTranscriptionProvider,
     setParakeetModel,
+    setHuggingFaceModel,
     setCloudTranscriptionProvider,
     setCloudTranscriptionModel,
     setCloudTranscriptionBaseUrl,
@@ -3171,6 +3186,8 @@ EOF`,
                   setWhisperModel={setWhisperModel}
                   parakeetModel={parakeetModel}
                   setParakeetModel={setParakeetModel}
+                  huggingFaceModel={huggingFaceModel}
+                  setHuggingFaceModel={setHuggingFaceModel}
                   cloudTranscriptionBaseUrl={cloudTranscriptionBaseUrl}
                   setCloudTranscriptionBaseUrl={setCloudTranscriptionBaseUrl}
                   transcriptionMode={transcriptionMode}

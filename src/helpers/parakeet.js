@@ -22,6 +22,7 @@ function getParakeetModelConfig(modelName) {
   if (!modelInfo) return null;
   return {
     url: modelInfo.downloadUrl,
+    huggingFaceRepo: modelInfo.huggingFaceRepo,
     size: modelInfo.expectedSizeBytes || modelInfo.sizeMb * 1_000_000,
     language: modelInfo.language,
     supportedLanguages: modelInfo.supportedLanguages || [],
@@ -301,6 +302,16 @@ class ParakeetManager {
     };
     this.currentDownloadProcess = downloadProcess;
 
+    if (modelConfig.huggingFaceRepo) {
+      return this._downloadFromHuggingFace(
+        modelName,
+        modelConfig,
+        progressCallback,
+        downloadProcess,
+        signal
+      );
+    }
+
     try {
       await fsPromises.mkdir(modelsDir, { recursive: true });
 
@@ -401,6 +412,116 @@ class ParakeetManager {
     } catch (error) {
       if (error.isAbort) {
         await fsPromises.unlink(archivePath).catch(() => {});
+        throw Object.assign(new Error("Download interrupted by user"), {
+          code: "DOWNLOAD_CANCELLED",
+        });
+      }
+      throw error;
+    } finally {
+      if (this.currentDownloadProcess === downloadProcess) {
+        this.currentDownloadProcess = null;
+      }
+    }
+  }
+
+  async _downloadFromHuggingFace(
+    modelName,
+    modelConfig,
+    progressCallback,
+    downloadProcess,
+    signal
+  ) {
+    const modelPath = this.getModelPath(modelName);
+    const modelsDir = this.getModelsDir();
+
+    try {
+      await fsPromises.mkdir(modelPath, { recursive: true });
+
+      const spaceCheck = await checkDiskSpace(modelsDir, modelConfig.size * 1.5);
+      if (!spaceCheck.ok) {
+        throw new Error(
+          `Not enough disk space to download model. Need ~${Math.round((modelConfig.size * 1.5) / 1_000_000)}MB, ` +
+            `only ${Math.round(spaceCheck.availableBytes / 1_000_000)}MB available.`
+        );
+      }
+
+      const files = REQUIRED_MODEL_FILES;
+      const totalFiles = files.length;
+      let completedFiles = 0;
+
+      for (let i = 0; i < files.length; i++) {
+        if (signal?.aborted) {
+          throw Object.assign(new Error("Download interrupted by user"), {
+            code: "DOWNLOAD_CANCELLED",
+            isAbort: true,
+          });
+        }
+
+        const fileName = files[i];
+        const filePath = path.join(modelPath, fileName);
+
+        let fileReady = false;
+        try {
+          const stats = await fsPromises.stat(filePath);
+          if (stats.size > 0) {
+            fileReady = true;
+            completedFiles++;
+          }
+        } catch {}
+
+        if (!fileReady) {
+          const fileUrl = `https://huggingface.co/${modelConfig.huggingFaceRepo}/resolve/main/${fileName}`;
+          debugLogger.info("Downloading HuggingFace model file", { modelName, fileName, fileUrl });
+
+          await downloadFile(fileUrl, filePath, {
+            timeout: 600000,
+            signal,
+            onProgress: (downloadedBytes, totalBytes) => {
+              const fileProgress = totalBytes > 0 ? downloadedBytes / totalBytes : 0;
+              const overallPercentage = Math.round(
+                ((completedFiles + fileProgress) / totalFiles) * 100
+              );
+              downloadProcess.percentage = overallPercentage;
+              downloadProcess.downloadedBytes = downloadedBytes;
+              downloadProcess.totalBytes = totalBytes;
+              if (progressCallback) {
+                progressCallback({
+                  type: "progress",
+                  model: modelName,
+                  downloaded_bytes: downloadedBytes,
+                  total_bytes: totalBytes,
+                  percentage: overallPercentage,
+                });
+              }
+            },
+          });
+          completedFiles++;
+        }
+      }
+
+      downloadProcess.phase = "installing";
+      downloadProcess.percentage = 100;
+      if (progressCallback) {
+        progressCallback({ type: "complete", model: modelName, percentage: 100 });
+      }
+
+      const serverStatus = this.serverManager.getServerStatus();
+      if (
+        this.serverManager.isAvailable(getModelRuntime(modelName)) &&
+        !serverStatus.running &&
+        !serverStatus.starting
+      ) {
+        this.serverManager.startServer(modelName).catch((err) => {
+          debugLogger.warn("Post-download server pre-warm failed (non-fatal)", {
+            error: err.message,
+            model: modelName,
+          });
+        });
+      }
+
+      return { model: modelName, downloaded: true, path: modelPath, success: true };
+    } catch (error) {
+      if (error.isAbort) {
         throw Object.assign(new Error("Download interrupted by user"), {
           code: "DOWNLOAD_CANCELLED",
         });
