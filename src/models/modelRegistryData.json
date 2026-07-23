@@ -96,6 +96,7 @@
       "runtime": "online",
       "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2",
       "extractDir": "sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25",
+      "recommended": true,
       "descriptionKey": "models.descriptions.parakeet.nemotron_speech_streaming_en_0_6b"
     },
     "nemotron-3.5-asr-streaming-0.6b": {
@@ -227,6 +228,7 @@
       "requiredFiles": ["config.json", "model.safetensors", "tokenizer.model", "tokenizer.vocab", "vocab.txt"],
       "size": "4.28GB",
       "sizeMb": 4282,
+      "recommended": true,
       "descriptionKey": "models.descriptions.mlx.parakeet_rnnt_1_1b"
     }
   },

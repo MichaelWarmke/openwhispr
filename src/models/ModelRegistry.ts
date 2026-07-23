@@ -116,6 +116,7 @@ export interface MlxModelInfo {
   language: string;
   huggingFaceRepo: string;
   requiredFiles: string[];
+  recommended?: boolean;
 }
 
 export type MlxModelsMap = Record<string, MlxModelInfo>;
