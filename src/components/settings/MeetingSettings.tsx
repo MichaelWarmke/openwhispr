@@ -84,6 +84,9 @@ export function MeetingTranscriptionPanel() {
   const handleLocalTranscriptionModelSelect = useCallback(
     (modelId: string, provider?: string) => {
       const activeProv = provider || meetingLocalTranscriptionProvider;
+      if (provider && provider !== meetingLocalTranscriptionProvider) {
+        setMeetingLocalTranscriptionProvider(provider as LocalTranscriptionProvider);
+      }
       if (activeProv === "huggingface") {
         setMeetingHuggingFaceModel(modelId);
       } else if (activeProv === "nvidia") {
@@ -92,7 +95,7 @@ export function MeetingTranscriptionPanel() {
         setMeetingWhisperModel(modelId);
       }
     },
-    [meetingLocalTranscriptionProvider, setMeetingHuggingFaceModel, setMeetingParakeetModel, setMeetingWhisperModel]
+    [meetingLocalTranscriptionProvider, setMeetingLocalTranscriptionProvider, setMeetingHuggingFaceModel, setMeetingParakeetModel, setMeetingWhisperModel]
   );
 
   const renderTranscriptionPicker = (mode: "cloud" | "local") => (

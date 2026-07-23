@@ -210,6 +210,26 @@
       "descriptionKey": "models.descriptions.whisper.turbo"
     }
   },
+  "mlxModels": {
+    "whisper-large-v3-mlx": {
+      "name": "Whisper Large v3 (MLX)",
+      "description": "Optimized MLX format for Apple Silicon",
+      "huggingFaceRepo": "mlx-community/whisper-large-v3-mlx",
+      "requiredFiles": ["config.json", "tokenizer.json", "weights.npz"],
+      "size": "3GB",
+      "sizeMb": 3000,
+      "descriptionKey": "models.descriptions.mlx.whisper_large_v3"
+    },
+    "parakeet-rnnt-1.1b-mlx": {
+      "name": "Parakeet RNNT 1.1B (MLX)",
+      "description": "Optimized MLX format of Parakeet RNNT 1.1B for Apple Silicon",
+      "huggingFaceRepo": "mlx-community/parakeet-rnnt-1.1b",
+      "requiredFiles": ["config.json", "model.safetensors", "tokenizer.model", "tokenizer.vocab", "vocab.txt"],
+      "size": "4.28GB",
+      "sizeMb": 4282,
+      "descriptionKey": "models.descriptions.mlx.parakeet_rnnt_1_1b"
+    }
+  },
   "transcriptionProviders": [
     {
       "id": "openai",

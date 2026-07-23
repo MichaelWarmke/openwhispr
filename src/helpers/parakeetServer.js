@@ -39,22 +39,32 @@ class ParakeetServerManager {
     return this.wsServer.hasAnyWsBinary();
   }
 
-  getModelsDir() {
-    return getModelsDirForService("parakeet");
-  }
-
-  isModelDownloaded(modelName) {
-    const modelDir = path.join(this.getModelsDir(), modelName);
+  isModelDownloaded(modelDir) {
     if (!fs.existsSync(modelDir)) return false;
 
     return REQUIRED_MODEL_FILES.every((file) => fs.existsSync(path.join(modelDir, file)));
   }
 
   async _ensureWav(audioBuffer) {
-    if (isWavFormat(audioBuffer)) {
-      const format = parseWavFormat(audioBuffer);
+    if (!audioBuffer) {
+      throw new Error("No audio buffer provided");
+    }
+
+    let buffer = audioBuffer;
+    if (!Buffer.isBuffer(buffer)) {
+      if (buffer instanceof ArrayBuffer) {
+        buffer = Buffer.from(buffer);
+      } else if (ArrayBuffer.isView(buffer)) {
+        buffer = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      } else {
+        buffer = Buffer.from(buffer);
+      }
+    }
+
+    if (isWavFormat(buffer)) {
+      const format = parseWavFormat(buffer);
       if (format?.sampleRate === SAMPLE_RATE && format?.channels === 1) {
-        return { wavBuffer: audioBuffer, filesToCleanup: [] };
+        return { wavBuffer: buffer, filesToCleanup: [] };
       }
       debugLogger.debug("WAV input needs resampling", { format });
     }
@@ -71,7 +81,7 @@ class ParakeetServerManager {
     const tempInputPath = path.join(tempDir, `parakeet-input-${timestamp}.webm`);
     const tempWavPath = path.join(tempDir, `parakeet-${timestamp}.wav`);
 
-    fs.writeFileSync(tempInputPath, audioBuffer);
+    fs.writeFileSync(tempInputPath, buffer);
 
     const inputStats = fs.statSync(tempInputPath);
     debugLogger.debug("Converting audio to WAV", { inputSize: inputStats.size });
@@ -83,10 +93,9 @@ class ParakeetServerManager {
   }
 
   async transcribe(audioBuffer, options = {}) {
-    const { modelName = "parakeet-tdt-0.6b-v3" } = options;
+    const { modelName = "parakeet-tdt-0.6b-v3", modelDir } = options;
 
-    const modelDir = path.join(this.getModelsDir(), modelName);
-    if (!this.isModelDownloaded(modelName)) {
+    if (!modelDir || !this.isModelDownloaded(modelDir)) {
       throw new Error(`Parakeet model "${modelName}" not downloaded`);
     }
 
@@ -176,14 +185,13 @@ class ParakeetServerManager {
     }
   }
 
-  async startServer(modelName) {
+  async startServer(modelName, modelDir) {
     const runtime = getModelRuntime(modelName);
     if (!this.wsServer.isAvailable(runtime)) {
       return { success: false, reason: "parakeet WS server binary not found" };
     }
 
-    const modelDir = path.join(this.getModelsDir(), modelName);
-    if (!this.isModelDownloaded(modelName)) {
+    if (!this.isModelDownloaded(modelDir)) {
       return { success: false, reason: `Model "${modelName}" not downloaded` };
     }
 

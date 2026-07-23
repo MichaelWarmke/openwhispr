@@ -305,6 +305,9 @@ function TranscriptionSection({
   const handleLocalModelSelect = useCallback(
     (modelId: string, provider?: string) => {
       const activeProv = provider || localTranscriptionProvider;
+      if (provider && provider !== localTranscriptionProvider) {
+        setLocalTranscriptionProvider(provider as LocalTranscriptionProvider);
+      }
       if (activeProv === "huggingface") {
         setHuggingFaceModel(modelId);
       } else if (activeProv === "nvidia") {
@@ -313,7 +316,7 @@ function TranscriptionSection({
         setWhisperModel(modelId);
       }
     },
-    [localTranscriptionProvider, setHuggingFaceModel, setParakeetModel, setWhisperModel]
+    [localTranscriptionProvider, setLocalTranscriptionProvider, setHuggingFaceModel, setParakeetModel, setWhisperModel]
   );
 
   const renderPreviewToggle = () => (

@@ -269,6 +269,7 @@ const ClipboardManager = require("./src/helpers/clipboard");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
 const DiarizationManager = require("./src/helpers/diarization");
+const MlxManager = require("./src/helpers/mlxManager");
 const TrayManager = require("./src/helpers/tray");
 const dockManager = require("./src/helpers/dockManager");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
@@ -303,6 +304,7 @@ let databaseManager = null;
 let clipboardManager = null;
 let whisperManager = null;
 let parakeetManager = null;
+let mlxManager = null;
 let diarizationManager = null;
 let trayManager = null;
 let updateManager = null;
@@ -397,6 +399,7 @@ function initializeCoreManagers() {
     whisperVulkanManager = new WhisperVulkanManager();
   }
   parakeetManager = new ParakeetManager();
+  mlxManager = new MlxManager();
   diarizationManager = new DiarizationManager();
   googleCalendarManager = new GoogleCalendarManager(databaseManager, windowManager);
   meetingDetectionEngine = new MeetingDetectionEngine(
@@ -432,6 +435,7 @@ function initializeCoreManagers() {
     clipboardManager,
     whisperManager,
     parakeetManager,
+    mlxManager,
     diarizationManager,
     windowManager,
     updateManager,
@@ -455,6 +459,7 @@ function initializeCoreManagers() {
 function registerSidecars() {
   if (whisperManager) sidecarRegistry.register("whisper", () => whisperManager.stopServer());
   if (parakeetManager) sidecarRegistry.register("parakeet", () => parakeetManager.stopServer());
+  if (mlxManager) sidecarRegistry.register("mlx", () => mlxManager.stopServer());
   if (diarizationManager) {
     sidecarRegistry.register("diarization", () => diarizationManager.shutdown());
   }
@@ -1009,6 +1014,14 @@ async function startApp() {
   };
   parakeetManager.initializeAtStartup(parakeetSettings).catch((err) => {
     debugLogger.debug("Parakeet startup init error (non-fatal)", { error: err.message });
+  });
+
+  const mlxSettings = {
+    localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
+    huggingFaceModel: process.env.HUGGINGFACE_MODEL || "",
+  };
+  mlxManager.initializeAtStartup(mlxSettings).catch((err) => {
+    debugLogger.debug("MLX startup init error (non-fatal)", { error: err.message });
   });
 
   // TODO: drop legacy REASONING_PROVIDER / LOCAL_REASONING_MODEL fallbacks after 2 releases.

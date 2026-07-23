@@ -398,6 +398,7 @@ class IPCHandlers {
     this.clipboardManager = managers.clipboardManager;
     this.whisperManager = managers.whisperManager;
     this.parakeetManager = managers.parakeetManager;
+    this.mlxManager = managers.mlxManager;
     this.diarizationManager = managers.diarizationManager;
     this.windowManager = managers.windowManager;
     this.updateManager = managers.updateManager;
@@ -1824,9 +1825,14 @@ class IPCHandlers {
         const real = resolveAllowedAudioPath(filePath);
         if (!real) return { success: false, error: "File path not allowed" };
         const audioBuffer = fs.readFileSync(real);
-        if (options.provider === "nvidia" || options.provider === "huggingface") {
-          const result = await this.parakeetManager.transcribeLocalParakeet(audioBuffer, options);
-          return result;
+        if (options.provider === "huggingface") {
+          const modelRegistryData = require("../models/modelRegistryData.json");
+          if (modelRegistryData.mlxModels?.[options.model]) {
+            return await this.mlxManager.transcribe(audioBuffer, options);
+          }
+          return await this.parakeetManager.transcribeLocalParakeet(audioBuffer, options);
+        } else if (options.provider === "nvidia") {
+          return await this.parakeetManager.transcribeLocalParakeet(audioBuffer, options);
         }
         const vadOptions = this._resolveWhisperVadOptions("noteRecording");
         const result = await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
@@ -2269,7 +2275,13 @@ class IPCHandlers {
       });
 
       try {
-        const result = await this.parakeetManager.transcribeLocalParakeet(audioBlob, options);
+        const modelRegistryData = require("../models/modelRegistryData.json");
+        let result;
+        if (options.model && modelRegistryData.mlxModels?.[options.model]) {
+          result = await this.mlxManager.transcribe(audioBlob, options);
+        } else {
+          result = await this.parakeetManager.transcribeLocalParakeet(audioBlob, options);
+        }
 
         debugLogger.log("Parakeet result", {
           success: result.success,
@@ -2369,8 +2381,6 @@ class IPCHandlers {
 
     ipcMain.handle("parakeet-server-start", async (event, modelName) => {
       const result = await this.parakeetManager.startServer(modelName);
-      // Persisting a provider that failed to start would wedge every launch
-      // into a failing pre-warm.
       if (result.success) {
         process.env.LOCAL_TRANSCRIPTION_PROVIDER = "nvidia";
         process.env.PARAKEET_MODEL = modelName;
@@ -2389,6 +2399,70 @@ class IPCHandlers {
 
     ipcMain.handle("parakeet-server-status", async () => {
       return this.parakeetManager.getServerStatus();
+    });
+
+    // MLX model management (dedicated endpoints)
+    ipcMain.handle("download-mlx-model", async (event, modelName) => {
+      try {
+        const result = await this.mlxManager.downloadModel(
+          modelName,
+          (progressData) => {
+            if (!event.sender.isDestroyed()) {
+              event.sender.send("mlx-download-progress", progressData);
+            }
+          }
+        );
+        return result;
+      } catch (error) {
+        if (
+          error.code !== "DOWNLOAD_IN_PROGRESS" &&
+          error.code !== "DOWNLOAD_CANCELLED" &&
+          !event.sender.isDestroyed()
+        ) {
+          event.sender.send("mlx-download-progress", {
+            type: "error",
+            model: modelName,
+            error: error.message,
+            code: error.code || "DOWNLOAD_FAILED",
+          });
+        }
+        return {
+          success: false,
+          error: error.message,
+          code: error.code || "DOWNLOAD_FAILED",
+        };
+      }
+    });
+
+    ipcMain.handle("list-mlx-models", async () => {
+      const models = await this.mlxManager.listModels();
+      return { models, success: true };
+    });
+
+    ipcMain.handle("delete-mlx-model", async (_event, modelName) => {
+      return this.mlxManager.deleteModel(modelName);
+    });
+
+    ipcMain.handle("cancel-mlx-download", async () => {
+      return this.mlxManager.cancelDownload();
+    });
+
+    ipcMain.handle("mlx-server-start", async (_event, modelName) => {
+      const result = await this.mlxManager.startServer(modelName);
+      if (result.success) {
+        process.env.LOCAL_TRANSCRIPTION_PROVIDER = "huggingface";
+        process.env.HUGGINGFACE_MODEL = modelName;
+        await this.environmentManager.saveAllKeysToEnvFile();
+      }
+      return result;
+    });
+
+    ipcMain.handle("mlx-server-stop", async () => {
+      return this.mlxManager.stopServer();
+    });
+
+    ipcMain.handle("mlx-server-status", async () => {
+      return this.mlxManager.getServerStatus();
     });
 
     // Diarization model management
@@ -4347,7 +4421,11 @@ class IPCHandlers {
             const model = settings.localTranscriptionProvider === "huggingface" 
               ? (settings.huggingFaceModel || process.env.HUGGINGFACE_MODEL || "parakeet-rnnt-1.1b")
               : (settings.parakeetModel || process.env.PARAKEET_MODEL || "parakeet-tdt-0.6b-v3");
-            result = await this.parakeetManager.transcribeLocalParakeet(buffer, { model });
+            if (settings.localTranscriptionProvider === "huggingface") {
+              result = await this.mlxManager.transcribe(buffer, { model });
+            } else {
+              result = await this.parakeetManager.transcribeLocalParakeet(buffer, { model });
+            }
           } else if (this.whisperManager?.serverManager?.isAvailable?.()) {
             const vadOptions = this._resolveWhisperVadOptions("noteRecording");
             result = await this.whisperManager.transcribeLocalWhisper(buffer, {
@@ -5674,9 +5752,15 @@ class IPCHandlers {
       try {
         let result;
         if (meetingLocalProvider === "nvidia" || meetingLocalProvider === "huggingface") {
-          result = await this.parakeetManager.transcribeLocalParakeet(wav, {
-            model: meetingLocalModel,
-          });
+          if (meetingLocalProvider === "huggingface") {
+            result = await this.mlxManager.transcribe(wav, {
+              model: meetingLocalModel,
+            });
+          } else {
+            result = await this.parakeetManager.transcribeLocalParakeet(wav, {
+              model: meetingLocalModel,
+            });
+          }
         } else {
           const vadOptions = this._resolveWhisperVadOptions("meeting");
           result = await this.whisperManager.transcribeLocalWhisper(wav, {
@@ -5935,9 +6019,15 @@ class IPCHandlers {
 
         let result;
         if (dictationPreviewProvider === "nvidia" || dictationPreviewProvider === "huggingface") {
-          result = await this.parakeetManager.transcribeLocalParakeet(wav, {
-            model: dictationPreviewModel,
-          });
+          if (dictationPreviewProvider === "huggingface") {
+            result = await this.mlxManager.transcribe(wav, {
+              model: dictationPreviewModel,
+            });
+          } else {
+            result = await this.parakeetManager.transcribeLocalParakeet(wav, {
+              model: dictationPreviewModel,
+            });
+          }
         } else {
           const vadOptions = this._resolveWhisperVadOptions("dictation");
           result = await this.whisperManager.transcribeLocalWhisper(wav, {

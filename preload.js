@@ -308,6 +308,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   parakeetServerStop: () => ipcRenderer.invoke("parakeet-server-stop"),
   parakeetServerStatus: () => ipcRenderer.invoke("parakeet-server-status"),
 
+  // MLX model management functions
+  downloadMlxModel: (modelName) => ipcRenderer.invoke("download-mlx-model", modelName),
+  onMlxDownloadProgress: registerListener("mlx-download-progress"),
+  listMlxModels: () => ipcRenderer.invoke("list-mlx-models"),
+  deleteMlxModel: (modelName) => ipcRenderer.invoke("delete-mlx-model", modelName),
+  cancelMlxDownload: () => ipcRenderer.invoke("cancel-mlx-download"),
+
+  // MLX server functions
+  mlxServerStart: (modelName) => ipcRenderer.invoke("mlx-server-start", modelName),
+  mlxServerStop: () => ipcRenderer.invoke("mlx-server-stop"),
+  mlxServerStatus: () => ipcRenderer.invoke("mlx-server-status"),
+
   // Diarization (speaker identification) functions
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
   getDiarizationModelStatus: () => ipcRenderer.invoke("get-diarization-model-status"),

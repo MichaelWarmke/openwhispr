@@ -835,7 +835,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
           };
           this._previewSource.connect(this._previewProcessor);
 
-          const provider = isNvidia ? "nvidia" : "whisper";
+          const provider = localTranscriptionProvider === "huggingface" ? "huggingface" : (isNvidia ? "nvidia" : "whisper");
           const model = isNvidia ? actualParakeetModel : whisperModel;
           const language = getBaseLanguageCode(getSettings().preferredLanguage);
           window.electronAPI?.startDictationPreview?.({

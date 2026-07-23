@@ -18,6 +18,7 @@ import {
   TranscriptionProviderData,
   WHISPER_MODEL_INFO,
   PARAKEET_MODEL_INFO,
+  MLX_MODEL_INFO,
 } from "../models/ModelRegistry";
 import {
   MODEL_PICKER_COLORS,
@@ -281,8 +282,8 @@ const VALID_CLOUD_PROVIDER_IDS = CLOUD_PROVIDER_TABS.map((p) => p.id);
 const TINFOIL_AUDIO_DOCS_URL = "https://docs.tinfoil.sh/models/audio";
 
 const LOCAL_PROVIDER_TABS: Array<{ id: string; name: string; disabled?: boolean }> = [
-  { id: "whisper", name: "OpenAI" },
-  { id: "nvidia", name: "NVIDIA" },
+  { id: "whisper", name: "Whisper" },
+  { id: "nvidia", name: "Sherpa_ONNX" },
   { id: "huggingface", name: "Hugging Face" },
 ];
 
@@ -364,9 +365,11 @@ export default function TranscriptionModelPicker({
   const effectiveLocal = mode === "local" ? true : mode === "cloud" ? false : useLocalWhisper;
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
+  const [mlxModels, setMlxModels] = useState<LocalModel[]>([]);
   const [internalLocalProvider, setInternalLocalProvider] = useState(selectedLocalProvider);
   const hasLoadedRef = useRef(false);
   const hasLoadedParakeetRef = useRef(false);
+  const hasLoadedMlxRef = useRef(false);
   const [gpuBackend, setGpuBackend] = useState<"cuda" | "vulkan" | null>(null);
   const [gpuDownloaded, setGpuDownloaded] = useState(false);
   const [gpuDownloading, setGpuDownloading] = useState(false);
@@ -385,8 +388,10 @@ export default function TranscriptionModelPicker({
   }, [selectedLocalProvider]);
   const localModelsLoadQueueRef = useRef<Promise<void>>(Promise.resolve());
   const parakeetModelsLoadQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const mlxModelsLoadQueueRef = useRef<Promise<void>>(Promise.resolve());
   const loadLocalModelsRef = useRef<(() => Promise<void>) | null>(null);
   const loadParakeetModelsRef = useRef<(() => Promise<void>) | null>(null);
+  const loadMlxModelsRef = useRef<(() => Promise<void>) | null>(null);
   const ensureValidCloudSelectionRef = useRef<(() => void) | null>(null);
   const selectedLocalModelRef = useRef(selectedLocalModel);
   const onLocalModelSelectRef = useRef(onLocalModelSelect);
@@ -416,7 +421,7 @@ export default function TranscriptionModelPicker({
     const current = selectedLocalModelRef.current;
     if (!current) return;
 
-    const isKnownModel = Boolean(WHISPER_MODEL_INFO[current] || PARAKEET_MODEL_INFO[current]);
+    const isKnownModel = Boolean(WHISPER_MODEL_INFO[current] || PARAKEET_MODEL_INFO[current] || MLX_MODEL_INFO[current]);
     if (isKnownModel) return;
 
     const downloaded = loadedModels.filter((m) => m.downloaded);
@@ -464,6 +469,24 @@ export default function TranscriptionModelPicker({
     return queuedLoad;
   }, []);
 
+  const loadMlxModels = useCallback(() => {
+    const load = async () => {
+      try {
+        const result = await window.electronAPI?.listMlxModels();
+        if (result?.success) {
+          setMlxModels(result.models);
+        }
+      } catch (error) {
+        logger.error("Failed to load MLX models", { error }, "models");
+        setMlxModels([]);
+      }
+    };
+
+    const queuedLoad = mlxModelsLoadQueueRef.current.then(load);
+    mlxModelsLoadQueueRef.current = queuedLoad;
+    return queuedLoad;
+  }, []);
+
   const ensureValidCloudSelection = useCallback(() => {
     const isValidProvider = VALID_CLOUD_PROVIDER_IDS.includes(selectedCloudProvider);
 
@@ -508,6 +531,9 @@ export default function TranscriptionModelPicker({
     loadParakeetModelsRef.current = loadParakeetModels;
   }, [loadParakeetModels]);
   useEffect(() => {
+    loadMlxModelsRef.current = loadMlxModels;
+  }, [loadMlxModels]);
+  useEffect(() => {
     ensureValidCloudSelectionRef.current = ensureValidCloudSelection;
   }, [ensureValidCloudSelection]);
 
@@ -518,11 +544,17 @@ export default function TranscriptionModelPicker({
       hasLoadedRef.current = true;
       loadLocalModelsRef.current?.();
     } else if (
-      (internalLocalProvider === "nvidia" || internalLocalProvider === "huggingface") &&
+      internalLocalProvider === "nvidia" &&
       !hasLoadedParakeetRef.current
     ) {
       hasLoadedParakeetRef.current = true;
       loadParakeetModelsRef.current?.();
+    } else if (
+      internalLocalProvider === "huggingface" &&
+      !hasLoadedMlxRef.current
+    ) {
+      hasLoadedMlxRef.current = true;
+      loadMlxModelsRef.current?.();
     }
   }, [effectiveLocal, internalLocalProvider]);
 
@@ -531,6 +563,7 @@ export default function TranscriptionModelPicker({
 
     hasLoadedRef.current = false;
     hasLoadedParakeetRef.current = false;
+    hasLoadedMlxRef.current = false;
     ensureValidCloudSelectionRef.current?.();
   }, [effectiveLocal]);
 
@@ -538,10 +571,11 @@ export default function TranscriptionModelPicker({
     const handleModelsCleared = () => {
       loadLocalModels();
       loadParakeetModels();
+      loadMlxModels();
     };
     window.addEventListener("openwhispr-models-cleared", handleModelsCleared);
     return () => window.removeEventListener("openwhispr-models-cleared", handleModelsCleared);
-  }, [loadLocalModels, loadParakeetModels]);
+  }, [loadLocalModels, loadParakeetModels, loadMlxModels]);
 
   useEffect(() => {
     if (!effectiveLocal || internalLocalProvider !== "whisper") return;
@@ -628,6 +662,20 @@ export default function TranscriptionModelPicker({
     onDownloadComplete: loadParakeetModels,
   });
 
+  const {
+    downloadingModel: downloadingMlxModel,
+    downloadProgress: mlxDownloadProgress,
+    downloadModel: downloadMlxModel,
+    deleteModel: deleteMlxModel,
+    isDownloadingModel: isDownloadingMlxModel,
+    isInstalling: isInstallingMlx,
+    cancelDownload: cancelMlxDownload,
+    isCancelling: isCancellingMlx,
+  } = useModelDownload({
+    modelType: "mlx",
+    onDownloadComplete: loadMlxModels,
+  });
+
   const handleModeChange = useCallback(
     (isLocal: boolean) => {
       onModeChange(isLocal);
@@ -676,11 +724,18 @@ export default function TranscriptionModelPicker({
 
   const handleParakeetModelSelect = useCallback(
     (modelId: string) => {
-      const info = PARAKEET_MODEL_INFO[modelId];
-      const provider = info && (info as any).huggingFaceRepo ? "huggingface" : "nvidia";
-      onLocalProviderSelect?.(provider);
-      setInternalLocalProvider(provider);
-      onLocalModelSelect(modelId, provider);
+      onLocalProviderSelect?.("nvidia");
+      setInternalLocalProvider("nvidia");
+      onLocalModelSelect(modelId, "nvidia");
+    },
+    [onLocalModelSelect, onLocalProviderSelect]
+  );
+
+  const handleMlxModelSelect = useCallback(
+    (modelId: string) => {
+      onLocalProviderSelect?.("huggingface");
+      setInternalLocalProvider("huggingface");
+      onLocalModelSelect(modelId, "huggingface");
     },
     [onLocalModelSelect, onLocalProviderSelect]
   );
@@ -804,6 +859,17 @@ export default function TranscriptionModelPicker({
       );
     }
 
+    if (downloadingMlxModel && internalLocalProvider === "huggingface") {
+      const modelInfo = MLX_MODEL_INFO[downloadingMlxModel];
+      return (
+        <DownloadProgressBar
+          modelName={modelInfo?.name || downloadingMlxModel}
+          progress={mlxDownloadProgress}
+          isInstalling={isInstallingMlx}
+        />
+      );
+    }
+
     return null;
   }, [
     downloadingModel,
@@ -812,6 +878,9 @@ export default function TranscriptionModelPicker({
     downloadingParakeetModel,
     parakeetDownloadProgress,
     isInstallingParakeet,
+    downloadingMlxModel,
+    mlxDownloadProgress,
+    isInstallingMlx,
     effectiveLocal,
     internalLocalProvider,
   ]);
@@ -837,9 +906,7 @@ export default function TranscriptionModelPicker({
             recommended: false,
           };
 
-          const activeProvider = selectedLocalProvider || internalLocalProvider;
-          const isCardSelected =
-            modelId === selectedLocalModel && activeProvider === "whisper";
+          const isCardSelected = modelId === selectedLocalModel;
 
           return (
             <LocalModelCard
@@ -875,6 +942,25 @@ export default function TranscriptionModelPicker({
     );
   };
 
+  const handleMlxDelete = useCallback(
+    (modelId: string) => {
+      showConfirmDialog({
+        title: t("transcription.deleteModel.title"),
+        description: t("transcription.deleteModel.description"),
+        onConfirm: async () => {
+          await deleteMlxModel(modelId, async () => {
+            const result = await window.electronAPI?.listMlxModels();
+            if (result?.success) {
+              setMlxModels(result.models);
+            }
+          });
+        },
+        variant: "destructive",
+      });
+    },
+    [showConfirmDialog, deleteMlxModel, t]
+  );
+
   const handleParakeetDelete = useCallback(
     (modelId: string) => {
       showConfirmDialog({
@@ -906,7 +992,7 @@ export default function TranscriptionModelPicker({
 
     const modelsToRender = allModels.filter((model) => {
       const info = PARAKEET_MODEL_INFO[model.model];
-      return !(info && (info as any).huggingFaceRepo);
+      return info && !(info as any).huggingFaceRepo;
     });
 
     const activeProvider = selectedLocalProvider || internalLocalProvider;
@@ -923,8 +1009,7 @@ export default function TranscriptionModelPicker({
             recommended: false,
           };
 
-          const isCardSelected =
-            modelId === selectedLocalModel && activeProvider === "nvidia";
+          const isCardSelected = modelId === selectedLocalModel;
 
           return (
             <LocalModelCard
@@ -962,26 +1047,19 @@ export default function TranscriptionModelPicker({
 
   const renderHuggingFaceModels = () => {
     const allModels =
-      parakeetModels.length === 0
-        ? Object.entries(PARAKEET_MODEL_INFO).map(([modelId, info]) => ({
+      mlxModels.length === 0
+        ? Object.entries(MLX_MODEL_INFO).map(([modelId, info]) => ({
             model: modelId,
             downloaded: false,
             size_mb: info.sizeMb,
           }))
-        : parakeetModels;
-
-    const modelsToRender = allModels.filter((model) => {
-      const info = PARAKEET_MODEL_INFO[model.model];
-      return Boolean(info && (info as any).huggingFaceRepo);
-    });
-
-    const activeProvider = selectedLocalProvider || internalLocalProvider;
+        : mlxModels;
 
     return (
       <div className="space-y-0.5">
-        {modelsToRender.map((model) => {
+        {allModels.map((model) => {
           const modelId = model.model;
-          const info = PARAKEET_MODEL_INFO[modelId] ?? {
+          const info = MLX_MODEL_INFO[modelId] ?? {
             name: modelId,
             description: t("transcription.fallback.parakeetModelDescription"),
             size: t("common.unknown"),
@@ -989,8 +1067,7 @@ export default function TranscriptionModelPicker({
             recommended: false,
           };
 
-          const isCardSelected =
-            modelId === selectedLocalModel && activeProvider === "huggingface";
+          const isCardSelected = modelId === selectedLocalModel;
 
           return (
             <LocalModelCard
@@ -1002,22 +1079,22 @@ export default function TranscriptionModelPicker({
               actualSizeMb={model.size_mb}
               isSelected={isCardSelected}
               isDownloaded={model.downloaded ?? false}
-              isDownloading={isDownloadingParakeetModel(modelId)}
-              isCancelling={isCancellingParakeet}
-              isInstalling={isInstallingParakeet}
+              isDownloading={isDownloadingMlxModel(modelId)}
+              isCancelling={isCancellingMlx}
+              isInstalling={isInstallingMlx}
               recommended={info.recommended}
               provider="huggingface"
-              onSelect={() => handleParakeetModelSelect(modelId)}
-              onDelete={() => handleParakeetDelete(modelId)}
+              onSelect={() => handleMlxModelSelect(modelId)}
+              onDelete={() => handleMlxDelete(modelId)}
               onDownload={() =>
-                downloadParakeetModel(modelId, (downloadedId) => {
-                  setParakeetModels((prev) =>
+                downloadMlxModel(modelId, (downloadedId) => {
+                  setMlxModels((prev) =>
                     prev.map((m) => (m.model === downloadedId ? { ...m, downloaded: true } : m))
                   );
-                  handleParakeetModelSelect(downloadedId);
+                  handleMlxModelSelect(downloadedId);
                 })
               }
-              onCancel={cancelParakeetDownload}
+              onCancel={cancelMlxDownload}
               styles={styles}
             />
           );

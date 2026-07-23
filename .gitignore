@@ -318,3 +318,7 @@ src/assets/Assets.car
 
 # Swift VFS Overlay
 resources/vfs-overlay.yaml
+
+# Swift PM & Native MLX Build Files
+scripts/mlx-native-source/.build/
+scripts/mlx-native-source/mlx-audio-swift/

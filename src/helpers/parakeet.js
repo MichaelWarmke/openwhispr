@@ -10,6 +10,7 @@ const {
   createDownloadInProgressError,
   cleanupStaleDownloads,
   checkDiskSpace,
+  downloadHuggingFaceModel,
 } = require("./downloadUtils");
 const ParakeetServerManager = require("./parakeetServer");
 const { getModelsDirForService } = require("./modelDirUtils");
@@ -42,7 +43,8 @@ class ParakeetManager {
   }
 
   getModelsDir() {
-    return getModelsDirForService("parakeet");
+    const { getCacheRoot } = require("./modelDirUtils");
+    return path.join(getCacheRoot(), "parakeet-models");
   }
 
   validateModelName(modelName) {
@@ -57,7 +59,12 @@ class ParakeetManager {
 
   getModelPath(modelName) {
     this.validateModelName(modelName);
-    return path.join(this.getModelsDir(), modelName);
+    const config = getParakeetModelConfig(modelName);
+    const { getCacheRoot } = require("./modelDirUtils");
+    if (config.huggingFaceRepo) {
+      return path.join(getCacheRoot(), "huggingface", modelName);
+    }
+    return path.join(getCacheRoot(), "sherpa_onnx", modelName);
   }
 
   async initializeAtStartup(settings = {}) {
@@ -66,7 +73,52 @@ class ParakeetManager {
     try {
       this.isInitialized = true;
 
-      await cleanupStaleDownloads(this.getModelsDir());
+      // Migration: move models from old parakeet-models to new directories
+      const { getCacheRoot } = require("./modelDirUtils");
+      const oldModelsDir = path.join(getCacheRoot(), "parakeet-models");
+      const hfDir = path.join(getCacheRoot(), "huggingface");
+      const sherpaDir = path.join(getCacheRoot(), "sherpa_onnx");
+      const hfModelsDir = path.join(getCacheRoot(), "huggingface-models");
+      const sherpaModelsDir = path.join(getCacheRoot(), "sherpa-onnx-models");
+
+      try {
+        if (fs.existsSync(oldModelsDir)) {
+          const validModels = getValidModelNames();
+          for (const model of validModels) {
+            const oldPath = path.join(oldModelsDir, model);
+            if (fs.existsSync(oldPath)) {
+              const newPath = this.getModelPath(model);
+              await fsPromises.mkdir(path.dirname(newPath), { recursive: true });
+              await fsPromises.rename(oldPath, newPath);
+            }
+          }
+        }
+      } catch (e) {
+        debugLogger.error("Failed to migrate parakeet models", { error: e.message });
+      }
+
+      // Also migrate from the briefly used intermediate directories
+      try {
+        for (const dir of [hfModelsDir, sherpaModelsDir]) {
+          if (fs.existsSync(dir)) {
+            const validModels = getValidModelNames();
+            for (const model of validModels) {
+              const oldPath = path.join(dir, model);
+              if (fs.existsSync(oldPath)) {
+                const newPath = this.getModelPath(model);
+                await fsPromises.mkdir(path.dirname(newPath), { recursive: true });
+                await fsPromises.rename(oldPath, newPath);
+              }
+            }
+          }
+        }
+      } catch (e) {}
+
+      await cleanupStaleDownloads(oldModelsDir);
+      await cleanupStaleDownloads(hfDir);
+      await cleanupStaleDownloads(sherpaDir);
+      await cleanupStaleDownloads(hfModelsDir);
+      await cleanupStaleDownloads(sherpaModelsDir);
 
       await this.logDependencyStatus();
 
@@ -77,7 +129,7 @@ class ParakeetManager {
         parakeetModel &&
         this.serverManager.isAvailable(getModelRuntime(parakeetModel))
       ) {
-        if (this.serverManager.isModelDownloaded(parakeetModel)) {
+        if (this.serverManager.isModelDownloaded(this.getModelPath(parakeetModel))) {
           debugLogger.info("Pre-warming parakeet server", { model: parakeetModel });
 
           try {
@@ -131,7 +183,7 @@ class ParakeetManager {
 
     for (const modelName of getValidModelNames()) {
       const modelPath = this.getModelPath(modelName);
-      if (this.serverManager.isModelDownloaded(modelName)) {
+      if (this.serverManager.isModelDownloaded(modelPath)) {
         try {
           const encoderPath = path.join(modelPath, "encoder.int8.onnx");
           const stats = fs.statSync(encoderPath);
@@ -169,7 +221,7 @@ class ParakeetManager {
 
   async startServer(modelName) {
     this.validateModelName(modelName);
-    return this.serverManager.startServer(modelName);
+    return this.serverManager.startServer(modelName, this.getModelPath(modelName));
   }
 
   async stopServer() {
@@ -210,7 +262,7 @@ class ParakeetManager {
       );
     }
 
-    if (!this.serverManager.isModelDownloaded(model)) {
+    if (!this.serverManager.isModelDownloaded(this.getModelPath(model))) {
       throw new Error(
         `Parakeet model "${model}" not downloaded. Please download it from Settings.`
       );
@@ -241,7 +293,7 @@ class ParakeetManager {
     });
 
     const startTime = Date.now();
-    const result = await this.serverManager.transcribe(audioBuffer, { modelName: model });
+    const result = await this.serverManager.transcribe(audioBuffer, { modelName: model, modelDir: this.getModelPath(model) });
     const elapsed = Date.now() - startTime;
 
     debugLogger.logSTTPipeline("transcribeLocalParakeet - completed", {
@@ -282,7 +334,7 @@ class ParakeetManager {
     const modelPath = this.getModelPath(modelName);
     const modelsDir = this.getModelsDir();
 
-    if (this.serverManager.isModelDownloaded(modelName)) {
+    if (this.serverManager.isModelDownloaded(modelPath)) {
       return { model: modelName, downloaded: true, path: modelPath, success: true };
     }
 
@@ -313,9 +365,10 @@ class ParakeetManager {
     }
 
     try {
-      await fsPromises.mkdir(modelsDir, { recursive: true });
+      const targetDir = path.dirname(modelPath);
+      await fsPromises.mkdir(targetDir, { recursive: true });
 
-      const spaceCheck = await checkDiskSpace(modelsDir, modelConfig.size * 2.5);
+      const spaceCheck = await checkDiskSpace(targetDir, modelConfig.size * 2.5);
       if (!spaceCheck.ok) {
         throw new Error(
           `Not enough disk space to download and extract model. Need ~${Math.round((modelConfig.size * 2.5) / 1_000_000)}MB, ` +
@@ -437,7 +490,7 @@ class ParakeetManager {
     try {
       await fsPromises.mkdir(modelPath, { recursive: true });
 
-      const spaceCheck = await checkDiskSpace(modelsDir, modelConfig.size * 1.5);
+      const spaceCheck = await checkDiskSpace(modelPath, modelConfig.size * 1.5);
       if (!spaceCheck.ok) {
         throw new Error(
           `Not enough disk space to download model. Need ~${Math.round((modelConfig.size * 1.5) / 1_000_000)}MB, ` +
@@ -446,58 +499,15 @@ class ParakeetManager {
       }
 
       const files = REQUIRED_MODEL_FILES;
-      const totalFiles = files.length;
-      let completedFiles = 0;
-
-      for (let i = 0; i < files.length; i++) {
-        if (signal?.aborted) {
-          throw Object.assign(new Error("Download interrupted by user"), {
-            code: "DOWNLOAD_CANCELLED",
-            isAbort: true,
-          });
-        }
-
-        const fileName = files[i];
-        const filePath = path.join(modelPath, fileName);
-
-        let fileReady = false;
-        try {
-          const stats = await fsPromises.stat(filePath);
-          if (stats.size > 0) {
-            fileReady = true;
-            completedFiles++;
-          }
-        } catch {}
-
-        if (!fileReady) {
-          const fileUrl = `https://huggingface.co/${modelConfig.huggingFaceRepo}/resolve/main/${fileName}`;
-          debugLogger.info("Downloading HuggingFace model file", { modelName, fileName, fileUrl });
-
-          await downloadFile(fileUrl, filePath, {
-            timeout: 600000,
-            signal,
-            onProgress: (downloadedBytes, totalBytes) => {
-              const fileProgress = totalBytes > 0 ? downloadedBytes / totalBytes : 0;
-              const overallPercentage = Math.round(
-                ((completedFiles + fileProgress) / totalFiles) * 100
-              );
-              downloadProcess.percentage = overallPercentage;
-              downloadProcess.downloadedBytes = downloadedBytes;
-              downloadProcess.totalBytes = totalBytes;
-              if (progressCallback) {
-                progressCallback({
-                  type: "progress",
-                  model: modelName,
-                  downloaded_bytes: downloadedBytes,
-                  total_bytes: totalBytes,
-                  percentage: overallPercentage,
-                });
-              }
-            },
-          });
-          completedFiles++;
-        }
-      }
+      await downloadHuggingFaceModel({
+        huggingFaceRepo: modelConfig.huggingFaceRepo,
+        requiredFiles: files,
+        modelPath,
+        modelName,
+        progressCallback,
+        downloadProcess,
+        signal
+      });
 
       downloadProcess.phase = "installing";
       downloadProcess.percentage = 100;
@@ -647,7 +657,7 @@ class ParakeetManager {
       totalBytes: activeDownload ? this.currentDownloadProcess.totalBytes : 0,
     };
 
-    if (this.serverManager.isModelDownloaded(modelName)) {
+    if (this.serverManager.isModelDownloaded(modelPath)) {
       try {
         const encoderPath = path.join(modelPath, "encoder.int8.onnx");
         const stats = fs.statSync(encoderPath);
@@ -773,7 +783,7 @@ class ParakeetManager {
       if (fs.existsSync(modelsDir)) {
         const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
         diagnostics.models = entries
-          .filter((e) => e.isDirectory() && this.serverManager.isModelDownloaded(e.name))
+          .filter((e) => e.isDirectory() && this.serverManager.isModelDownloaded(path.join(modelsDir, e.name)))
           .map((e) => e.name);
       }
     } catch {}

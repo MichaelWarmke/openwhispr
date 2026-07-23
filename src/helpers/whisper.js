@@ -60,7 +60,8 @@ class WhisperManager {
   }
 
   getModelsDir() {
-    return getModelsDirForService("whisper");
+    const { getCacheRoot } = require("./modelDirUtils");
+    return path.join(getCacheRoot(), "whisper");
   }
 
   validateModelName(modelName) {
@@ -100,6 +101,25 @@ class WhisperManager {
     try {
       this.isInitialized = true;
 
+      const oldModelsDir = path.join(require("./modelDirUtils").getCacheRoot(), "whisper-models");
+      try {
+        if (fs.existsSync(oldModelsDir)) {
+          const validModels = getValidModelNames();
+          for (const model of validModels) {
+            const config = getWhisperModelConfig(model);
+            const oldPath = path.join(oldModelsDir, config.fileName);
+            if (fs.existsSync(oldPath)) {
+              const newPath = this.getModelPath(model);
+              await fsPromises.mkdir(path.dirname(newPath), { recursive: true });
+              await fsPromises.rename(oldPath, newPath);
+            }
+          }
+        }
+      } catch (e) {
+        debugLogger.error("Failed to migrate whisper models", { error: e.message });
+      }
+      
+      await cleanupStaleDownloads(oldModelsDir);
       await cleanupStaleDownloads(this.getModelsDir());
 
       // Pre-warm whisper-server if local mode enabled (eliminates 2-5s cold-start delay)

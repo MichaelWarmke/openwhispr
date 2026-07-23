@@ -510,6 +510,71 @@ async function findFiles(dir, pattern, maxDepth = 5, depth = 0) {
   return results;
 }
 
+async function downloadHuggingFaceModel({
+  huggingFaceRepo,
+  requiredFiles,
+  modelPath,
+  modelName,
+  progressCallback,
+  downloadProcess,
+  signal
+}) {
+  const totalFiles = requiredFiles.length;
+  let completedFiles = 0;
+
+  for (let i = 0; i < requiredFiles.length; i++) {
+    if (signal?.aborted) {
+      throw Object.assign(new Error("Download interrupted by user"), {
+        code: "DOWNLOAD_CANCELLED",
+        isAbort: true,
+      });
+    }
+
+    const fileName = requiredFiles[i];
+    const filePath = path.join(modelPath, fileName);
+
+    let fileReady = false;
+    try {
+      const stats = await fsPromises.stat(filePath);
+      if (stats.size > 0) {
+        fileReady = true;
+        completedFiles++;
+      }
+    } catch {}
+
+    if (!fileReady) {
+      const fileUrl = `https://huggingface.co/${huggingFaceRepo}/resolve/main/${fileName}`;
+      debugLogger.info("Downloading HuggingFace model file", { modelName, fileName, fileUrl });
+
+      await downloadFile(fileUrl, filePath, {
+        timeout: 600000,
+        signal,
+        onProgress: (downloadedBytes, totalBytes) => {
+          const fileProgress = totalBytes > 0 ? downloadedBytes / totalBytes : 0;
+          const overallPercentage = Math.round(
+            ((completedFiles + fileProgress) / totalFiles) * 100
+          );
+          if (downloadProcess) {
+            downloadProcess.percentage = overallPercentage;
+            downloadProcess.downloadedBytes = downloadedBytes;
+            downloadProcess.totalBytes = totalBytes;
+          }
+          if (progressCallback) {
+            progressCallback({
+              type: "progress",
+              model: modelName,
+              downloaded_bytes: downloadedBytes,
+              total_bytes: totalBytes,
+              percentage: overallPercentage,
+            });
+          }
+        },
+      });
+      completedFiles++;
+    }
+  }
+}
+
 module.exports = {
   downloadFile,
   fetchJson,
@@ -521,4 +586,5 @@ module.exports = {
   extractArchive,
   findFile,
   findFiles,
+  downloadHuggingFaceModel,
 };

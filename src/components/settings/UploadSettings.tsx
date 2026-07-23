@@ -57,6 +57,9 @@ export function UploadTranscriptionPanel() {
   const handleLocalTranscriptionModelSelect = useCallback(
     (modelId: string, provider?: string) => {
       const activeProv = provider || uploadLocalTranscriptionProvider;
+      if (provider && provider !== uploadLocalTranscriptionProvider) {
+        setUploadLocalTranscriptionProvider(provider as LocalTranscriptionProvider);
+      }
       if (activeProv === "huggingface") {
         setUploadHuggingFaceModel(modelId);
       } else if (activeProv === "nvidia") {
@@ -65,7 +68,7 @@ export function UploadTranscriptionPanel() {
         setUploadWhisperModel(modelId);
       }
     },
-    [uploadLocalTranscriptionProvider, setUploadHuggingFaceModel, setUploadParakeetModel, setUploadWhisperModel]
+    [uploadLocalTranscriptionProvider, setUploadLocalTranscriptionProvider, setUploadHuggingFaceModel, setUploadParakeetModel, setUploadWhisperModel]
   );
 
   const renderTranscriptionPicker = (mode: "cloud" | "local") => (

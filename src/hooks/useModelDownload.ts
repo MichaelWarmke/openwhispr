@@ -22,7 +22,7 @@ export interface DownloadProgress {
   eta?: number;
 }
 
-export type ModelType = "whisper" | "llm" | "parakeet";
+export type ModelType = "whisper" | "llm" | "parakeet" | "mlx";
 
 interface UseModelDownloadOptions {
   modelType: ModelType;
@@ -151,6 +151,8 @@ export function useModelDownload({
           const result =
             modelType === "whisper"
               ? await window.electronAPI?.listWhisperModels?.()
+              : modelType === "mlx"
+              ? await window.electronAPI?.listMlxModels?.()
               : await window.electronAPI?.listParakeetModels?.();
           const models = result?.models as TranscriptionModelStatus[] | undefined;
           const active =
@@ -347,6 +349,8 @@ export function useModelDownload({
       dispose = window.electronAPI?.onWhisperDownloadProgress(handleTranscriptionProgress);
     } else if (modelType === "parakeet") {
       dispose = window.electronAPI?.onParakeetDownloadProgress(handleTranscriptionProgress);
+    } else if (modelType === "mlx") {
+      dispose = window.electronAPI?.onMlxDownloadProgress(handleTranscriptionProgress);
     } else {
       dispose = window.electronAPI?.onModelDownloadProgress(handleLLMProgress);
     }
@@ -409,6 +413,8 @@ export function useModelDownload({
           result = await window.electronAPI?.downloadWhisperModel(modelId);
         } else if (modelType === "parakeet") {
           result = await window.electronAPI?.downloadParakeetModel(modelId);
+        } else if (modelType === "mlx") {
+          result = await window.electronAPI?.downloadMlxModel(modelId);
         } else {
           result = (await window.electronAPI?.modelDownload?.(modelId)) as unknown as
             { success: boolean; error?: string; code?: string } | undefined;
@@ -522,6 +528,12 @@ export function useModelDownload({
               }),
             });
           }
+        } else if (modelType === "mlx") {
+          await window.electronAPI?.deleteMlxModel(modelId);
+          toast({
+            title: t("hooks.modelDownload.modelDeleted.title"),
+            description: t("hooks.modelDownload.modelDeleted.description"),
+          });
         } else {
           await window.electronAPI?.modelDelete?.(modelId);
           toast({
@@ -553,6 +565,9 @@ export function useModelDownload({
         result = await window.electronAPI?.cancelWhisperDownload();
       } else if (modelType === "parakeet") {
         result = await window.electronAPI?.cancelParakeetDownload();
+      } else if (modelType === "mlx") {
+        const cancelled = await window.electronAPI?.cancelMlxDownload?.();
+        result = { success: !!cancelled };
       } else {
         result = await window.electronAPI?.modelCancelDownload?.(downloadingModel);
       }

@@ -921,6 +921,18 @@ declare global {
       }>;
       getParakeetDiagnostics: () => Promise<ParakeetDiagnosticsResult>;
 
+      // MLX model management
+      downloadMlxModel: (modelName: string) => Promise<ParakeetModelResult>;
+      onMlxDownloadProgress: (
+        callback: (event: any, data: ParakeetDownloadProgressData) => void
+      ) => () => void;
+      listMlxModels: () => Promise<ParakeetModelsListResult>;
+      deleteMlxModel: (modelName: string) => Promise<ParakeetModelDeleteResult>;
+      cancelMlxDownload: () => Promise<boolean>;
+      mlxServerStart: (modelName: string) => Promise<{ success: boolean; reason?: string }>;
+      mlxServerStop: () => Promise<any>;
+      mlxServerStatus: () => Promise<any>;
+
       // Local AI model management
       modelGetAll: () => Promise<LocalLLMModelStatus[]>;
       modelCheck: (modelId: string) => Promise<boolean>;

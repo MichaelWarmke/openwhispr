@@ -107,8 +107,22 @@ export interface ParakeetModelInfo {
 
 export type ParakeetModelsMap = Record<string, ParakeetModelInfo>;
 
+export interface MlxModelInfo {
+  name: string;
+  description: string;
+  descriptionKey?: string;
+  size: string;
+  sizeMb: number;
+  language: string;
+  huggingFaceRepo: string;
+  requiredFiles: string[];
+}
+
+export type MlxModelsMap = Record<string, MlxModelInfo>;
+
 interface ModelRegistryData {
   parakeetModels: ParakeetModelsMap;
+  mlxModels: MlxModelsMap;
   whisperModels: WhisperModelsMap;
   transcriptionProviders: TranscriptionProviderData[];
   cloudProviders: CloudProviderData[];
@@ -493,7 +507,20 @@ export function isOnlineParakeetModel(modelId: string): boolean {
   return modelData.parakeetModels[modelId]?.runtime === "online";
 }
 
+export function isMlxModel(modelId: string): boolean {
+  return !!(modelData as any).mlxModels?.[modelId];
+}
+
+export function getMlxModels(): MlxModelsMap {
+  return (modelData as any).mlxModels || {};
+}
+
+export function getMlxModelInfo(modelId: string): MlxModelInfo | undefined {
+  return (modelData as any).mlxModels?.[modelId];
+}
+
 export const PARAKEET_MODEL_INFO = modelData.parakeetModels;
+export const MLX_MODEL_INFO = (modelData as any).mlxModels || {};
 
 export function getWhisperModelConfig(modelId: string): WhisperModelConfig | null {
   const modelInfo = modelData.whisperModels[modelId];
