@@ -278,7 +278,7 @@ class MlxManager {
   async transcribe(audioBuffer, options = {}) {
     const model = options.model || "parakeet-rnnt-1.1b-mlx";
     const modelPath = this.getModelPath(model);
-    return this.serverManager.transcribe(audioBuffer, modelPath, options);
+    return this.serverManager.transcribe(audioBuffer, modelPath, { ...options, modelName: model });
   }
 
   createOnlineStream(options) {

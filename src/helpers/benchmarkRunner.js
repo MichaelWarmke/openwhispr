@@ -203,6 +203,8 @@ async function runBenchmark(modelIds, _customAudioPath, managers, onProgress) {
           await whisperManager.startServer(modelId);
         } else if (engine === "parakeet") {
           await parakeetManager.startServer(modelId);
+        } else if (engine === "mlx") {
+          await mlxManager.startServer(modelId);
         }
       } catch (e) {
         debugLogger.warn("Benchmark: initialization failed, continuing to let transcription handle it", {
