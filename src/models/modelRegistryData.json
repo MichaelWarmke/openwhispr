@@ -215,17 +215,41 @@
     "whisper-large-v3-mlx": {
       "name": "Whisper Large v3 (MLX)",
       "description": "Optimized MLX format for Apple Silicon",
-      "huggingFaceRepo": "mlx-community/whisper-large-v3-mlx",
-      "requiredFiles": ["config.json", "tokenizer.json", "weights.npz"],
+      "huggingFaceRepo": "mlx-community/whisper-large-v3-fp16",
+      "requiredFiles": ["config.json", "model.safetensors"],
       "size": "3GB",
       "sizeMb": 3000,
       "descriptionKey": "models.descriptions.mlx.whisper_large_v3"
+    },
+    "whisper-large-v3-turbo-mlx": {
+      "name": "Whisper Large v3 Turbo (MLX)",
+      "description": "Optimized MLX format of Whisper Large v3 Turbo for Apple Silicon",
+      "huggingFaceRepo": "mlx-community/whisper-large-v3-turbo",
+      "requiredFiles": ["config.json", "weights.safetensors"],
+      "size": "1.6GB",
+      "sizeMb": 1650,
+      "descriptionKey": "models.descriptions.mlx.whisper_large_v3_turbo"
+    },
+    "whisper-large-v3-turbo-4bit-mlx": {
+      "name": "Whisper Large v3 Turbo 4-bit (MLX)",
+      "description": "4-bit quantized MLX format of Whisper Large v3 Turbo for Apple Silicon",
+      "huggingFaceRepo": "mlx-community/whisper-large-v3-turbo-4bit",
+      "requiredFiles": ["config.json", "model.safetensors"],
+      "size": "463MB",
+      "sizeMb": 463,
+      "descriptionKey": "models.descriptions.mlx.whisper_large_v3_turbo_4bit"
     },
     "parakeet-rnnt-1.1b-mlx": {
       "name": "Parakeet RNNT 1.1B (MLX)",
       "description": "Optimized MLX format of Parakeet RNNT 1.1B for Apple Silicon",
       "huggingFaceRepo": "mlx-community/parakeet-rnnt-1.1b",
-      "requiredFiles": ["config.json", "model.safetensors", "tokenizer.model", "tokenizer.vocab", "vocab.txt"],
+      "requiredFiles": [
+        "config.json",
+        "model.safetensors",
+        "tokenizer.model",
+        "tokenizer.vocab",
+        "vocab.txt"
+      ],
       "size": "4.28GB",
       "sizeMb": 4282,
       "recommended": true,

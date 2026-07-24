@@ -2465,6 +2465,24 @@ class IPCHandlers {
       return this.mlxManager.getServerStatus();
     });
 
+    ipcMain.handle("run-model-benchmark", async (event, modelIds, audioPath) => {
+      const { runBenchmark } = require("./benchmarkRunner");
+      return runBenchmark(
+        modelIds,
+        audioPath,
+        {
+          whisperManager: this.whisperManager,
+          parakeetManager: this.parakeetManager,
+          mlxManager: this.mlxManager,
+        },
+        (modelId, status, details) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send("model-benchmark-progress", { modelId, status, details });
+          }
+        }
+      );
+    });
+
     // Diarization model management
     ipcMain.handle("download-diarization-models", async (event) => {
       try {
@@ -4421,7 +4439,8 @@ class IPCHandlers {
             const model = settings.localTranscriptionProvider === "huggingface" 
               ? (settings.huggingFaceModel || process.env.HUGGINGFACE_MODEL || "parakeet-rnnt-1.1b")
               : (settings.parakeetModel || process.env.PARAKEET_MODEL || "parakeet-tdt-0.6b-v3");
-            if (settings.localTranscriptionProvider === "huggingface") {
+            const modelRegistryData = require("../models/modelRegistryData.json");
+            if (model && modelRegistryData.mlxModels?.[model]) {
               result = await this.mlxManager.transcribe(buffer, { model });
             } else {
               result = await this.parakeetManager.transcribeLocalParakeet(buffer, { model });
@@ -5752,7 +5771,8 @@ class IPCHandlers {
       try {
         let result;
         if (meetingLocalProvider === "nvidia" || meetingLocalProvider === "huggingface") {
-          if (meetingLocalProvider === "huggingface") {
+          const modelRegistryData = require("../models/modelRegistryData.json");
+          if (meetingLocalModel && modelRegistryData.mlxModels?.[meetingLocalModel]) {
             result = await this.mlxManager.transcribe(wav, {
               model: meetingLocalModel,
             });
@@ -6019,7 +6039,8 @@ class IPCHandlers {
 
         let result;
         if (dictationPreviewProvider === "nvidia" || dictationPreviewProvider === "huggingface") {
-          if (dictationPreviewProvider === "huggingface") {
+          const modelRegistryData = require("../models/modelRegistryData.json");
+          if (dictationPreviewModel && modelRegistryData.mlxModels?.[dictationPreviewModel]) {
             result = await this.mlxManager.transcribe(wav, {
               model: dictationPreviewModel,
             });

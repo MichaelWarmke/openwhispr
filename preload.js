@@ -320,6 +320,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   mlxServerStop: () => ipcRenderer.invoke("mlx-server-stop"),
   mlxServerStatus: () => ipcRenderer.invoke("mlx-server-status"),
 
+  // Model benchmark functions
+  runModelBenchmark: (modelIds, audioPath) =>
+    ipcRenderer.invoke("run-model-benchmark", modelIds, audioPath),
+  onModelBenchmarkProgress: registerListener(
+    "model-benchmark-progress",
+    (callback) => (_event, data) => callback(data)
+  ),
+
   // Diarization (speaker identification) functions
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
   getDiarizationModelStatus: () => ipcRenderer.invoke("get-diarization-model-status"),

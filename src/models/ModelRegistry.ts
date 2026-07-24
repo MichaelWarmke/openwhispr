@@ -113,7 +113,7 @@ export interface MlxModelInfo {
   descriptionKey?: string;
   size: string;
   sizeMb: number;
-  language: string;
+  language?: string;
   huggingFaceRepo: string;
   requiredFiles: string[];
   recommended?: boolean;

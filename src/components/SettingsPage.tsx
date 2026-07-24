@@ -35,6 +35,7 @@ import {
   Wand2,
   Upload,
   Languages,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { AUTH_URL, signOut, deleteAccount } from "../lib/auth";
@@ -85,6 +86,7 @@ import DictationTranslationSettings from "./settings/DictationTranslationSetting
 import InferenceConfigEditor from "./settings/InferenceConfigEditor";
 import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
 import { UploadTranscriptionPanel } from "./settings/UploadSettings";
+import ModelBenchmark from "./settings/ModelBenchmark";
 import LanguageSelector from "./ui/LanguageSelector";
 import { Skeleton } from "./ui/skeleton";
 import { Progress } from "./ui/progress";
@@ -473,7 +475,7 @@ function AiModelsSection({ useCleanupModel, setUseCleanupModel, toast }: AiModel
   );
 }
 
-type SpeechTab = "dictation" | "noteRecording" | "upload";
+type SpeechTab = "dictation" | "noteRecording" | "upload" | "benchmark";
 type LlmTab =
   | "dictationCleanup"
   | "dictationAgent"
@@ -481,7 +483,7 @@ type LlmTab =
   | "noteFormatting"
   | "chatIntelligence";
 
-const SPEECH_TABS: SpeechTab[] = ["dictation", "noteRecording", "upload"];
+const SPEECH_TABS: SpeechTab[] = ["dictation", "noteRecording", "upload", "benchmark"];
 const LLM_TABS: LlmTab[] = [
   "dictationCleanup",
   "dictationAgent",
@@ -531,11 +533,13 @@ function SpeechToTextTabs({
   renderDictation,
   renderNoteRecording,
   renderUpload,
+  renderBenchmark,
 }: {
   initialTab?: SpeechTab;
   renderDictation: () => React.ReactNode;
   renderNoteRecording: () => React.ReactNode;
   renderUpload: () => React.ReactNode;
+  renderBenchmark: () => React.ReactNode;
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useSubTab<SpeechTab>("settings.speechToTextTab", SPEECH_TABS, initialTab);
@@ -544,6 +548,7 @@ function SpeechToTextTabs({
     { id: "dictation", name: t("settingsPage.speechToText.tabs.dictation") },
     { id: "noteRecording", name: t("settingsPage.speechToText.tabs.noteRecording") },
     { id: "upload", name: t("settingsPage.speechToText.tabs.upload") },
+    { id: "benchmark", name: t("settingsPage.speechToText.tabs.benchmark", "Benchmark") },
   ];
 
   return (
@@ -556,19 +561,17 @@ function SpeechToTextTabs({
         providers={subTabs}
         selectedId={tab}
         onSelect={(id) => setTab(id as SpeechTab)}
-        renderIcon={(id) =>
-          id === "dictation" ? (
-            <Mic className="w-3.5 h-3.5" />
-          ) : id === "upload" ? (
-            <Upload className="w-3.5 h-3.5" />
-          ) : (
-            <FileAudio className="w-3.5 h-3.5" />
-          )
-        }
+        renderIcon={(id) => {
+          if (id === "dictation") return <Mic className="w-3.5 h-3.5" />;
+          if (id === "upload") return <Upload className="w-3.5 h-3.5" />;
+          if (id === "benchmark") return <Zap className="w-3.5 h-3.5" />;
+          return <FileAudio className="w-3.5 h-3.5" />;
+        }}
       />
       <TabPanel active={tab === "dictation"}>{renderDictation()}</TabPanel>
       <TabPanel active={tab === "noteRecording"}>{renderNoteRecording()}</TabPanel>
       <TabPanel active={tab === "upload"}>{renderUpload()}</TabPanel>
+      <TabPanel active={tab === "benchmark"}>{renderBenchmark()}</TabPanel>
     </div>
   );
 }
@@ -2864,182 +2867,8 @@ EOF`,
       case "system":
         return (
           <div className="space-y-6">
-            {/* Software Updates */}
-            <div>
-              <SectionHeader title={t("settingsPage.general.updates.title")} />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label={t("settingsPage.general.updates.currentVersion")}
-                    description={
-                      updateStatus.isDevelopment
-                        ? t("settingsPage.general.updates.devMode")
-                        : isUpdateAvailable
-                          ? t("settingsPage.general.updates.newVersionAvailable")
-                          : t("settingsPage.general.updates.latestVersion")
-                    }
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs tabular-nums text-muted-foreground font-mono">
-                        {currentVersion || t("settingsPage.general.updates.versionPlaceholder")}
-                      </span>
-                      {updateStatus.isDevelopment ? (
-                        <Badge variant="warning">
-                          {t("settingsPage.general.updates.badges.dev")}
-                        </Badge>
-                      ) : isUpdateAvailable ? (
-                        <Badge variant="success">
-                          {t("settingsPage.general.updates.badges.update")}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          {t("settingsPage.general.updates.badges.latest")}
-                        </Badge>
-                      )}
-                    </div>
-                  </SettingsRow>
-                </SettingsPanelRow>
-
-                <SettingsPanelRow>
-                  <div className="space-y-2.5">
-                    <Button
-                      onClick={async () => {
-                        try {
-                          const result = await checkForUpdates();
-                          if (result && !result.updateAvailable) {
-                            toast({
-                              title: t("settingsPage.general.updates.dialogs.noUpdates.title"),
-                              description: t(
-                                "settingsPage.general.updates.dialogs.noUpdates.description"
-                              ),
-                            });
-                          }
-                        } catch {}
-                      }}
-                      disabled={checkingForUpdates || updateStatus.isDevelopment}
-                      variant="outline"
-                      className="w-full"
-                      size="sm"
-                    >
-                      <RefreshCw
-                        size={13}
-                        className={`mr-1.5 ${checkingForUpdates ? "animate-spin" : ""}`}
-                      />
-                      {checkingForUpdates
-                        ? t("settingsPage.general.updates.checking")
-                        : t("settingsPage.general.updates.checkForUpdates")}
-                    </Button>
-
-                    {isUpdateAvailable && !updateStatus.updateDownloaded && (
-                      <div className="space-y-2">
-                        <Button
-                          onClick={async () => {
-                            try {
-                              await downloadUpdate();
-                            } catch {
-                              showAlertDialog({
-                                title: t(
-                                  "settingsPage.general.updates.dialogs.downloadFailed.title"
-                                ),
-                                description: t(
-                                  "settingsPage.general.updates.dialogs.downloadFailed.description"
-                                ),
-                              });
-                            }
-                          }}
-                          disabled={downloadingUpdate}
-                          variant="success"
-                          className="w-full"
-                          size="sm"
-                        >
-                          <Download
-                            size={13}
-                            className={`mr-1.5 ${downloadingUpdate ? "animate-pulse" : ""}`}
-                          />
-                          {downloadingUpdate
-                            ? t("settingsPage.general.updates.downloading", {
-                                progress: Math.round(updateDownloadProgress),
-                              })
-                            : t("settingsPage.general.updates.downloadUpdate", {
-                                version: updateInfo?.version || "",
-                              })}
-                        </Button>
-
-                        {downloadingUpdate && (
-                          <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
-                            <div
-                              className="h-full bg-success transition-[width] duration-200 rounded-full"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, updateDownloadProgress))}%`,
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {updateStatus.updateDownloaded && (
-                      <Button
-                        onClick={() => {
-                          showConfirmDialog({
-                            title: t("settingsPage.general.updates.dialogs.installUpdate.title"),
-                            description: t(
-                              "settingsPage.general.updates.dialogs.installUpdate.description",
-                              { version: updateInfo?.version || "" }
-                            ),
-                            confirmText: t(
-                              "settingsPage.general.updates.dialogs.installUpdate.confirmText"
-                            ),
-                            onConfirm: async () => {
-                              try {
-                                await installUpdateAction();
-                              } catch {
-                                showAlertDialog({
-                                  title: t(
-                                    "settingsPage.general.updates.dialogs.installFailed.title"
-                                  ),
-                                  description: t(
-                                    "settingsPage.general.updates.dialogs.installFailed.description"
-                                  ),
-                                });
-                              }
-                            },
-                          });
-                        }}
-                        disabled={installInitiated}
-                        className="w-full"
-                        size="sm"
-                      >
-                        <RefreshCw
-                          size={14}
-                          className={`mr-2 ${installInitiated ? "animate-spin" : ""}`}
-                        />
-                        {installInitiated
-                          ? t("settingsPage.general.updates.restarting")
-                          : t("settingsPage.general.updates.installAndRestart")}
-                      </Button>
-                    )}
-                  </div>
-
-                  {updateInfo?.releaseNotes && (
-                    <div className="mt-4 pt-4 border-t border-border/30">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        {t("settingsPage.general.updates.whatsNew", {
-                          version: updateInfo.version,
-                        })}
-                      </p>
-                      <div
-                        className="text-xs text-muted-foreground [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:space-y-1 [&_li]:pl-1 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_a]:text-link [&_a]:underline"
-                        dangerouslySetInnerHTML={{ __html: updateInfo.releaseNotes }}
-                      />
-                    </div>
-                  )}
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
             {/* Developer Tools */}
-            <div className="border-t border-border/40 pt-6">
+            <div>
               <DeveloperSection />
             </div>
 
@@ -3220,6 +3049,9 @@ EOF`,
               <div className="space-y-6">
                 <UploadTranscriptionPanel />
               </div>
+            )}
+            renderBenchmark={() => (
+              <ModelBenchmark />
             )}
           />
         </TabPanel>

@@ -1186,7 +1186,7 @@
         "label": "Permissions"
       },
       "system": {
-        "description": "Updates, storage & developer tools",
+        "description": "Storage & developer tools",
         "label": "System"
       }
     },
@@ -1850,7 +1850,8 @@
       "tabs": {
         "dictation": "Dictation",
         "noteRecording": "Note Recording",
-        "upload": "Audio Upload"
+        "upload": "Audio Upload",
+        "benchmark": "Benchmark"
       },
       "selfHostedStreamingNote": "Requires a server that supports streaming transcription."
     },
@@ -1987,6 +1988,12 @@
         "parakeet_unified_en_0_6b": "English-only ASR with state-of-the-art accuracy (5.91% avg WER)",
         "nemotron_speech_streaming_en_0_6b": "English streaming ASR from NVIDIA Nemotron",
         "nemotron_3_5_asr_streaming_0_6b": "Multilingual streaming ASR from NVIDIA Nemotron with auto language detection (15 languages)"
+      },
+      "mlx": {
+        "whisper_large_v3": "Optimized MLX format of Whisper Large v3 for Apple Silicon",
+        "whisper_large_v3_turbo": "Optimized MLX format of Whisper Large v3 Turbo for Apple Silicon",
+        "whisper_large_v3_turbo_4bit": "4-bit quantized MLX format of Whisper Large v3 Turbo for Apple Silicon",
+        "parakeet_rnnt_1_1b": "Optimized MLX format of Parakeet RNNT 1.1B for Apple Silicon"
       },
       "diarization": {
         "segmentation": "Speech boundary detection for speaker diarization",

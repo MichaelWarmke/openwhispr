@@ -933,6 +933,48 @@ declare global {
       mlxServerStop: () => Promise<any>;
       mlxServerStatus: () => Promise<any>;
 
+      // Model benchmarking
+      runModelBenchmark: (
+        modelIds: string[],
+        audioPath: string | null
+      ) => Promise<{
+        results: Array<{
+          modelId: string;
+          modelName: string;
+          engine: string;
+          modelSize: string;
+          samples: Record<
+            string,
+            {
+              sampleId: string;
+              label: string;
+              audioDuration: number;
+              durationMs: number;
+              rtf: number;
+              text: string;
+              similarity: number | null;
+              error: string | null;
+            }
+          >;
+          avgRtf: number;
+          avgSimilarity: number;
+          durationMs: number;
+          rtf: number;
+          text: string;
+          similarity: number | null;
+          error: string | null;
+        }>;
+        samples: Array<{ id: string; label: string; duration: number }>;
+        timestamp: string;
+      }>;
+      onModelBenchmarkProgress: (
+        callback: (data: {
+          modelId: string;
+          status: string;
+          details?: { sampleId?: string; sampleLabel?: string };
+        }) => void
+      ) => () => void;
+
       // Local AI model management
       modelGetAll: () => Promise<LocalLLMModelStatus[]>;
       modelCheck: (modelId: string) => Promise<boolean>;
