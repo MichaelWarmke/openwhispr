@@ -9,29 +9,26 @@ const debugLogger = require("./debugLogger");
  * measuring wall-clock time, RTF, and word match similarity for comparison.
  */
 
-const SHORT_SAMPLE_PATH = path.join(
-  __dirname,
-  "..",
-  "..",
-  "resources",
-  "benchmark-sample-short.wav"
-);
+function resolveSamplePath(filename) {
+  const candidates = [];
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, "resources", filename));
+    candidates.push(path.join(process.resourcesPath, filename));
+    candidates.push(path.join(process.resourcesPath, "app.asar", "resources", filename));
+  }
+  candidates.push(path.join(__dirname, "..", "..", "resources", filename));
 
-const MEDIUM_SAMPLE_PATH = path.join(
-  __dirname,
-  "..",
-  "..",
-  "resources",
-  "benchmark-sample.wav"
-);
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+  return path.join(__dirname, "..", "..", "resources", filename);
+}
 
-const LONG_SAMPLE_PATH = path.join(
-  __dirname,
-  "..",
-  "..",
-  "resources",
-  "benchmark-sample-long.wav"
-);
+const SHORT_SAMPLE_PATH = resolveSamplePath("benchmark-sample-short.wav");
+const MEDIUM_SAMPLE_PATH = resolveSamplePath("benchmark-sample.wav");
+const LONG_SAMPLE_PATH = resolveSamplePath("benchmark-sample-long.wav");
 
 const SHORT_REFERENCE_TEXT =
   "The quick brown fox jumps over the lazy dog. " +
@@ -96,6 +93,26 @@ function getEngine(modelId) {
 }
 
 function getModelDisplayName(modelId) {
+  const paramMap = {
+    tiny: "Tiny 39M (Whisper)",
+    base: "Base 74M (Whisper)",
+    small: "Small 244M (Whisper)",
+    medium: "Medium 769M (Whisper)",
+    large: "Large v3 1.5B (Whisper)",
+    turbo: "Large v3 Turbo 809M (Whisper)",
+    "parakeet-rnnt-1.1b": "Parakeet RNNT 1.1B (NVIDIA)",
+    "parakeet-tdt-0.6b-v3": "Parakeet TDT 0.6B (NVIDIA)",
+    "parakeet-unified-en-0.6b": "Parakeet Unified EN 0.6B (NVIDIA)",
+    "nemotron-speech-streaming-en-0.6b": "Nemotron Speech Streaming EN 0.6B (NVIDIA)",
+    "nemotron-3.5-asr-streaming-0.6b": "Nemotron 3.5 ASR Streaming 0.6B (NVIDIA)",
+    "whisper-large-v3-mlx": "Whisper Large v3 1.5B (MLX)",
+    "whisper-large-v3-turbo-mlx": "Whisper Large v3 Turbo 809M (MLX)",
+    "whisper-large-v3-turbo-4bit-mlx": "Whisper Large v3 Turbo 4-bit 809M (MLX)",
+    "parakeet-rnnt-1.1b-mlx": "Parakeet RNNT 1.1B (MLX)",
+  };
+
+  if (paramMap[modelId]) return paramMap[modelId];
+
   const modelRegistryData = require("../models/modelRegistryData.json");
   return (
     modelRegistryData.mlxModels?.[modelId]?.name ||

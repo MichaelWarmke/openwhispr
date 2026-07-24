@@ -150,7 +150,7 @@
   },
   "whisperModels": {
     "tiny": {
-      "name": "Tiny",
+      "name": "Tiny 39M",
       "description": "Fastest, lower quality",
       "size": "75MB",
       "sizeMb": 75,
@@ -160,7 +160,7 @@
       "descriptionKey": "models.descriptions.whisper.tiny"
     },
     "base": {
-      "name": "Base",
+      "name": "Base 74M",
       "description": "Good balance",
       "size": "142MB",
       "sizeMb": 142,
@@ -171,7 +171,7 @@
       "descriptionKey": "models.descriptions.whisper.base"
     },
     "small": {
-      "name": "Small",
+      "name": "Small 244M",
       "description": "Better quality, slower",
       "size": "466MB",
       "sizeMb": 466,
@@ -181,7 +181,7 @@
       "descriptionKey": "models.descriptions.whisper.small"
     },
     "medium": {
-      "name": "Medium",
+      "name": "Medium 769M",
       "description": "High quality",
       "size": "1.5GB",
       "sizeMb": 1500,
@@ -191,7 +191,7 @@
       "descriptionKey": "models.descriptions.whisper.medium"
     },
     "large": {
-      "name": "Large",
+      "name": "Large v3 1.5B",
       "description": "Best quality, slowest",
       "size": "3GB",
       "sizeMb": 3000,
@@ -201,7 +201,7 @@
       "descriptionKey": "models.descriptions.whisper.large"
     },
     "turbo": {
-      "name": "Turbo",
+      "name": "Large v3 Turbo 809M",
       "description": "Fast with good quality",
       "size": "1.6GB",
       "sizeMb": 1600,
@@ -213,7 +213,7 @@
   },
   "mlxModels": {
     "whisper-large-v3-mlx": {
-      "name": "Whisper Large v3 (MLX)",
+      "name": "Whisper Large v3 1.5B (MLX)",
       "description": "Optimized MLX format for Apple Silicon",
       "huggingFaceRepo": "mlx-community/whisper-large-v3-fp16",
       "requiredFiles": ["config.json", "model.safetensors"],
@@ -222,7 +222,7 @@
       "descriptionKey": "models.descriptions.mlx.whisper_large_v3"
     },
     "whisper-large-v3-turbo-mlx": {
-      "name": "Whisper Large v3 Turbo (MLX)",
+      "name": "Whisper Large v3 Turbo 809M (MLX)",
       "description": "Optimized MLX format of Whisper Large v3 Turbo for Apple Silicon",
       "huggingFaceRepo": "mlx-community/whisper-large-v3-turbo",
       "requiredFiles": ["config.json", "weights.safetensors"],
@@ -231,7 +231,7 @@
       "descriptionKey": "models.descriptions.mlx.whisper_large_v3_turbo"
     },
     "whisper-large-v3-turbo-4bit-mlx": {
-      "name": "Whisper Large v3 Turbo 4-bit (MLX)",
+      "name": "Whisper Large v3 Turbo 4-bit 809M (MLX)",
       "description": "4-bit quantized MLX format of Whisper Large v3 Turbo for Apple Silicon",
       "huggingFaceRepo": "mlx-community/whisper-large-v3-turbo-4bit",
       "requiredFiles": ["config.json", "model.safetensors"],

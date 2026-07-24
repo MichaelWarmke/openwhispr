@@ -92,11 +92,20 @@ export default function ModelBenchmark() {
       try {
         const whisperRes = await window.electronAPI?.listWhisperModels?.();
         if (whisperRes?.success && whisperRes.models) {
+          const whisperParamNames: Record<string, string> = {
+            tiny: "Tiny 39M",
+            base: "Base 74M",
+            small: "Small 244M",
+            medium: "Medium 769M",
+            large: "Large v3 1.5B",
+            turbo: "Large v3 Turbo 809M",
+          };
           whisperRes.models.forEach((m: any) => {
             if (m.downloaded) {
+              const displayName = whisperParamNames[m.model] || (m.model.charAt(0).toUpperCase() + m.model.slice(1));
               list.push({
                 id: m.model,
-                name: m.model.charAt(0).toUpperCase() + m.model.slice(1) + " (Whisper)",
+                name: `${displayName} (Whisper)`,
                 engine: "whisper",
                 size: m.size_mb ? `${m.size_mb} MB` : "Unknown",
                 downloaded: true,
@@ -112,11 +121,19 @@ export default function ModelBenchmark() {
       try {
         const parakeetRes = await window.electronAPI?.listParakeetModels?.();
         if (parakeetRes?.success && parakeetRes.models) {
+          const parakeetParamNames: Record<string, string> = {
+            "parakeet-rnnt-1.1b": "Parakeet RNNT 1.1B",
+            "parakeet-tdt-0.6b-v3": "Parakeet TDT 0.6B",
+            "parakeet-unified-en-0.6b": "Parakeet Unified EN 0.6B",
+            "nemotron-speech-streaming-en-0.6b": "Nemotron Speech Streaming EN 0.6B",
+            "nemotron-3.5-asr-streaming-0.6b": "Nemotron 3.5 ASR Streaming 0.6B",
+          };
           parakeetRes.models.forEach((m: any) => {
             if (m.downloaded) {
+              const displayName = parakeetParamNames[m.model] || m.model;
               list.push({
                 id: m.model,
-                name: m.model.replace("parakeet-", "Parakeet ").toUpperCase() + " (NVIDIA)",
+                name: `${displayName} (NVIDIA)`,
                 engine: "parakeet",
                 size: m.size_mb ? `${m.size_mb} MB` : "Unknown",
                 downloaded: true,
@@ -132,11 +149,18 @@ export default function ModelBenchmark() {
       try {
         const mlxRes = await window.electronAPI?.listMlxModels?.();
         if (mlxRes?.success && mlxRes.models) {
+          const mlxParamNames: Record<string, string> = {
+            "whisper-large-v3-mlx": "Whisper Large v3 1.5B",
+            "whisper-large-v3-turbo-mlx": "Whisper Large v3 Turbo 809M",
+            "whisper-large-v3-turbo-4bit-mlx": "Whisper Large v3 Turbo 4-bit 809M",
+            "parakeet-rnnt-1.1b-mlx": "Parakeet RNNT 1.1B",
+          };
           mlxRes.models.forEach((m: any) => {
             if (m.downloaded) {
+              const displayName = mlxParamNames[m.model] || m.model.replace("-mlx", "");
               list.push({
                 id: m.model,
-                name: m.model.replace("-mlx", " (MLX)").toUpperCase(),
+                name: `${displayName} (MLX)`,
                 engine: "mlx",
                 size: m.size_mb ? `${m.size_mb} MB` : "Unknown",
                 downloaded: true,
