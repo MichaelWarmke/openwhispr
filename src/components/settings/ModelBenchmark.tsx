@@ -150,6 +150,7 @@ export default function ModelBenchmark() {
         const mlxRes = await window.electronAPI?.listMlxModels?.();
         if (mlxRes?.success && mlxRes.models) {
           const mlxParamNames: Record<string, string> = {
+            "whisper-base-mlx": "Whisper Base 74M",
             "whisper-large-v3-mlx": "Whisper Large v3 1.5B",
             "whisper-large-v3-turbo-mlx": "Whisper Large v3 Turbo 809M",
             "whisper-large-v3-turbo-4bit-mlx": "Whisper Large v3 Turbo 4-bit 809M",

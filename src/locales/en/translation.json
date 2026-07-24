@@ -1990,6 +1990,7 @@
         "nemotron_3_5_asr_streaming_0_6b": "Multilingual streaming ASR from NVIDIA Nemotron with auto language detection (15 languages)"
       },
       "mlx": {
+        "whisper_base": "Optimized MLX format of Whisper Base for Apple Silicon",
         "whisper_large_v3": "Optimized MLX format of Whisper Large v3 for Apple Silicon",
         "whisper_large_v3_turbo": "Optimized MLX format of Whisper Large v3 Turbo for Apple Silicon",
         "whisper_large_v3_turbo_4bit": "4-bit quantized MLX format of Whisper Large v3 Turbo for Apple Silicon",

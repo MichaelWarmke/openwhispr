@@ -105,6 +105,7 @@ function getModelDisplayName(modelId) {
     "parakeet-unified-en-0.6b": "Parakeet Unified EN 0.6B (NVIDIA)",
     "nemotron-speech-streaming-en-0.6b": "Nemotron Speech Streaming EN 0.6B (NVIDIA)",
     "nemotron-3.5-asr-streaming-0.6b": "Nemotron 3.5 ASR Streaming 0.6B (NVIDIA)",
+    "whisper-base-mlx": "Whisper Base 74M (MLX)",
     "whisper-large-v3-mlx": "Whisper Large v3 1.5B (MLX)",
     "whisper-large-v3-turbo-mlx": "Whisper Large v3 Turbo 809M (MLX)",
     "whisper-large-v3-turbo-4bit-mlx": "Whisper Large v3 Turbo 4-bit 809M (MLX)",
