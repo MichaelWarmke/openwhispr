@@ -212,6 +212,7 @@ class MlxManager {
     const modelInfo = [];
 
     for (const model of validModels) {
+      const config = modelRegistryData.mlxModels?.[model];
       const activeDownload = this.currentDownloadProcess?.modelName === model;
       const downloadStatus = {
         isDownloading: activeDownload,
@@ -226,6 +227,8 @@ class MlxManager {
           model,
           downloaded: true,
           path: this.getModelPath(model),
+          size_mb: config?.sizeMb || 0,
+          size: config?.size || "Unknown",
           success: true,
           ...downloadStatus,
         });
@@ -233,6 +236,8 @@ class MlxManager {
         modelInfo.push({
           model,
           downloaded: false,
+          size_mb: config?.sizeMb || 0,
+          size: config?.size || "Unknown",
           success: true,
           ...downloadStatus,
         });

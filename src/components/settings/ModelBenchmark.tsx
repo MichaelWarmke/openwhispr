@@ -163,7 +163,7 @@ export default function ModelBenchmark() {
                 id: m.model,
                 name: `${displayName} (MLX)`,
                 engine: "mlx",
-                size: m.size_mb ? `${m.size_mb} MB` : "Unknown",
+                size: m.size || (m.size_mb ? `${m.size_mb} MB` : "Unknown"),
                 downloaded: true,
               });
             }
