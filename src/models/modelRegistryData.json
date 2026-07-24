@@ -215,7 +215,7 @@
     "whisper-base-mlx": {
       "name": "Whisper Base 74M (MLX)",
       "description": "Optimized MLX format of Whisper Base for Apple Silicon",
-      "huggingFaceRepo": "mlx-community/whisper-base-mlx",
+      "huggingFaceRepo": "mlx-community/whisper-base-asr-fp16",
       "requiredFiles": ["config.json", "model.safetensors"],
       "size": "145MB",
       "sizeMb": 145,
