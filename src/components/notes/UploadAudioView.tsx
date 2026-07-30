@@ -228,6 +228,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const isProUser = usage?.isSubscribed || usage?.isTrial;
 
   const {
+    geminiApiKey,
     openaiApiKey,
     groqApiKey,
     xaiApiKey,
@@ -352,17 +353,19 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           if (!cancelled) setProviderReady(!!(cortiClientId && cortiClientSecret));
         } else {
           const key =
-            cloudTranscriptionProvider === "openai"
-              ? openaiApiKey
-              : cloudTranscriptionProvider === "groq"
-                ? groqApiKey
-                : cloudTranscriptionProvider === "xai"
-                  ? xaiApiKey
-                  : cloudTranscriptionProvider === "mistral"
-                    ? mistralApiKey
-                    : cloudTranscriptionProvider === "tinfoil"
-                      ? tinfoilApiKey
-                      : customTranscriptionApiKey;
+            cloudTranscriptionProvider === "gemini"
+              ? geminiApiKey
+              : cloudTranscriptionProvider === "openai"
+                ? openaiApiKey
+                : cloudTranscriptionProvider === "groq"
+                  ? groqApiKey
+                  : cloudTranscriptionProvider === "xai"
+                    ? xaiApiKey
+                    : cloudTranscriptionProvider === "mistral"
+                      ? mistralApiKey
+                      : cloudTranscriptionProvider === "tinfoil"
+                        ? tinfoilApiKey
+                        : customTranscriptionApiKey;
           if (!cancelled) setProviderReady(!!key);
         }
         return;
@@ -393,6 +396,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     localTranscriptionProvider,
     cloudTranscriptionProvider,
     cloudTranscriptionBaseUrl,
+    geminiApiKey,
     openaiApiKey,
     groqApiKey,
     xaiApiKey,
@@ -426,6 +430,8 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const getActiveApiKey = (): string => {
     switch (cloudTranscriptionProvider) {
+      case "gemini":
+        return geminiApiKey;
       case "openai":
         return openaiApiKey;
       case "groq":
