@@ -3158,6 +3158,55 @@ class IPCHandlers {
       }
     );
 
+    ipcMain.handle(
+      "proxy-gemini-transcription",
+      async (event, { audioBuffer, model, language }) => {
+        const apiKey = this.environmentManager.getGeminiKey();
+        if (!apiKey) {
+          throw new Error("Gemini API key not configured");
+        }
+
+        const geminiModel = model && model.startsWith("gemini") ? model : "gemini-2.5-flash";
+        const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+        const base64Audio = Buffer.from(audioBuffer).toString("base64");
+
+        const payload = {
+          contents: [
+            {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: "audio/webm",
+                    data: base64Audio,
+                  },
+                },
+                {
+                  text: "Generate an accurate, complete, word-for-word transcript of the audio speech. Output ONLY the transcript text with no introductory or concluding remarks.",
+                },
+              ],
+            },
+          ],
+        };
+
+        const response = await proxyFetch(targetUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Gemini API Error: ${response.status} ${errorText}`);
+        }
+
+        const resJson = await response.json();
+        const text = resJson.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+        return { text };
+      }
+    );
+
     ipcMain.handle("get-corti-client-id", async () => {
       return this.environmentManager.getCortiClientId();
     });
@@ -7567,6 +7616,57 @@ class IPCHandlers {
           }
 
           if (!apiKey) throw new Error("No API key configured. Add your key in Settings.");
+
+          if (provider === "gemini") {
+            const geminiModel = model && model.startsWith("gemini") ? model : "gemini-2.5-flash";
+            const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+            const ext = path.extname(realByok).toLowerCase().replace(".", "");
+            const contentType = AUDIO_MIME_TYPES[ext] || "audio/mpeg";
+            const audioBuffer = fs.readFileSync(realByok);
+
+            const payload = {
+              contents: [
+                {
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: contentType,
+                        data: audioBuffer.toString("base64"),
+                      },
+                    },
+                    {
+                      text: "Generate an accurate, complete, word-for-word transcript of the audio speech. Output ONLY the transcript text with no introductory or concluding remarks.",
+                    },
+                  ],
+                },
+              ],
+            };
+
+            const response = await proxyFetch(targetUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            });
+
+            if (response.status === 400 || response.status === 401) {
+              const errJson = await response.json().catch(() => null);
+              const msg = errJson?.error?.message || "Invalid API key. Check your key in Settings.";
+              return { success: false, error: msg };
+            }
+
+            if (!response.ok) {
+              const errJson = await response.json().catch(() => null);
+              throw new Error(
+                errJson?.error?.message || `Gemini API Error: ${response.status}`
+              );
+            }
+
+            const resJson = await response.json();
+            const text = resJson.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+            return { success: true, text };
+          }
           if (!baseUrl && provider !== "xai") {
             throw new Error("No transcription endpoint configured.");
           }

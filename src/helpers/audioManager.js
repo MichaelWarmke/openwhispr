@@ -2248,6 +2248,31 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         throw new Error("No text transcribed - Mistral response was empty");
       }
 
+      // Gemini STT uses Google AI Studio generateContent — proxy through main process.
+      if (provider === "gemini" && window.electronAPI?.proxyGeminiTranscription) {
+        const audioBuffer = await optimizedAudio.arrayBuffer();
+        const proxyData = { audioBuffer, model, language };
+
+        const result = await window.electronAPI.proxyGeminiTranscription(proxyData);
+        const proxyText = result?.text;
+
+        if (proxyText && proxyText.trim().length > 0) {
+          if (this.isDictionaryEcho(proxyText)) {
+            throw new Error("No audio detected");
+          }
+          timings.transcriptionProcessingDurationMs = Math.round(performance.now() - apiCallStart);
+          const rawText = proxyText;
+          const reasoningStart = performance.now();
+          const text = await this.processTranscription(proxyText, "gemini");
+          timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
+
+          const source = (await this.isReasoningAvailable()) ? "gemini-reasoned" : "gemini";
+          return { success: true, text, rawText, source, timings };
+        }
+
+        throw new Error("No text transcribed - Gemini response was empty");
+      }
+
       // xAI STT has a non-OpenAI-compatible API — proxy through main process. See #910.
       if (provider === "xai" && window.electronAPI?.proxyXaiTranscription) {
         const audioBuffer = await optimizedAudio.arrayBuffer();
@@ -2577,6 +2602,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       if (provider === "xai") return "grok-stt";
       if (provider === "mistral") return "voxtral-mini-latest";
       if (provider === "corti") return "corti-transcribe";
+      if (provider === "gemini") return "gemini-2.5-flash";
       return "gpt-4o-mini-transcribe";
     } catch (error) {
       return "gpt-4o-mini-transcribe";

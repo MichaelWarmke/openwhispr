@@ -1197,6 +1197,11 @@ declare global {
         language?: string;
         contextBias?: string[];
       }) => Promise<{ text: string }>;
+      proxyGeminiTranscription?: (data: {
+        audioBuffer: ArrayBuffer;
+        model?: string;
+        language?: string;
+      }) => Promise<{ text: string }>;
 
       // Corti credential management
       getCortiClientId?: () => Promise<string | null>;
