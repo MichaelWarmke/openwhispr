@@ -203,17 +203,12 @@ interface TranscriptionModelPickerProps {
 }
 
 const CLOUD_PROVIDER_TABS = [
-  { id: "openai", name: "OpenAI" },
-  { id: "groq", name: "Groq" },
-  { id: "xai", name: "xAI" },
-  { id: "mistral", name: "Mistral" },
-  { id: "corti", name: "Corti" },
-  { id: "tinfoil", name: "Tinfoil" },
-  { id: "custom", name: "Custom" },
+  { id: "gemini", name: "Google Gemini" },
 ];
 
 interface ProviderCredentialField {
   key:
+    | "geminiApiKey"
     | "openaiApiKey"
     | "groqApiKey"
     | "xaiApiKey"
@@ -233,6 +228,10 @@ const PROVIDER_CREDENTIALS: Record<
   string,
   { consoleUrl: string; fields: ProviderCredentialField[] }
 > = {
+  gemini: {
+    consoleUrl: "https://aistudio.google.com/app/apikey",
+    fields: [{ key: "geminiApiKey", input: "secret" }],
+  },
   openai: {
     consoleUrl: "https://platform.openai.com/api-keys",
     fields: [{ key: "openaiApiKey", input: "secret" }],
@@ -282,8 +281,8 @@ const VALID_CLOUD_PROVIDER_IDS = CLOUD_PROVIDER_TABS.map((p) => p.id);
 const TINFOIL_AUDIO_DOCS_URL = "https://docs.tinfoil.sh/models/audio";
 
 const LOCAL_PROVIDER_TABS: Array<{ id: string; name: string; disabled?: boolean }> = [
-  { id: "whisper", name: "Whisper" },
-  { id: "nvidia", name: "Sherpa_ONNX" },
+  { id: "whisper", name: "Open AI" },
+  { id: "nvidia", name: "NVIDIA" },
   { id: "huggingface", name: "Hugging Face" },
 ];
 
@@ -360,6 +359,8 @@ export default function TranscriptionModelPicker({
   const setCortiTenant = useSettingsStore((s) => s.setCortiTenant);
   const tinfoilApiKey = useSettingsStore((s) => s.tinfoilApiKey);
   const setTinfoilApiKey = useSettingsStore((s) => s.setTinfoilApiKey);
+  const geminiApiKey = useSettingsStore((s) => s.geminiApiKey);
+  const setGeminiApiKey = useSettingsStore((s) => s.setGeminiApiKey);
   const customTranscriptionApiKey = useSettingsStore((s) => s.customTranscriptionApiKey);
   const setCustomTranscriptionApiKey = useSettingsStore((s) => s.setCustomTranscriptionApiKey);
   const effectiveLocal = mode === "local" ? true : mode === "cloud" ? false : useLocalWhisper;
@@ -796,8 +797,9 @@ export default function TranscriptionModelPicker({
   );
 
   const providerCredentials =
-    PROVIDER_CREDENTIALS[selectedCloudProvider] ?? PROVIDER_CREDENTIALS.openai;
+    PROVIDER_CREDENTIALS[selectedCloudProvider] ?? PROVIDER_CREDENTIALS.gemini;
   const credentialValues: Record<ProviderCredentialField["key"], string> = {
+    geminiApiKey,
     openaiApiKey,
     groqApiKey,
     xaiApiKey,
@@ -809,6 +811,7 @@ export default function TranscriptionModelPicker({
     tinfoilApiKey,
   };
   const credentialSetters: Record<ProviderCredentialField["key"], (value: string) => void> = {
+    geminiApiKey: setGeminiApiKey,
     openaiApiKey: setOpenaiApiKey,
     groqApiKey: setGroqApiKey,
     xaiApiKey: setXaiApiKey,

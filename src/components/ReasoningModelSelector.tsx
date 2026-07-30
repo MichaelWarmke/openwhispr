@@ -39,14 +39,7 @@ const OPENROUTER_TAB = "openrouter";
 const OPENROUTER_KEYS_URL = "https://openrouter.ai/keys";
 
 const CLOUD_PROVIDER_IDS = [
-  "openai",
-  "anthropic",
   "gemini",
-  "groq",
-  OPENROUTER_TAB,
-  "tinfoil",
-  "corti",
-  "custom",
 ];
 
 interface ReasoningModelSelectorProps {

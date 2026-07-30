@@ -67,6 +67,12 @@ export default function InferenceConfigEditor({ scope, onModeChange }: Inference
   const prefix = MODE_LABEL_PREFIX[scope];
   const modes: InferenceModeOption[] = [
     {
+      id: "providers",
+      label: t(`${prefix}.providers`),
+      description: t(`${prefix}.providersDesc`),
+      icon: <Key className="w-4 h-4" />,
+    },
+    {
       id: "local",
       label: t(`${prefix}.local`),
       description: t(`${prefix}.localDesc`),

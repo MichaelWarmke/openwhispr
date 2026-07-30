@@ -239,7 +239,6 @@ function migrateProviderSettings() {
     ) {
       newReasoningMode = "enterprise";
     } else if (
-      reasoningProvider === "qwen" ||
       reasoningProvider === "llama" ||
       reasoningProvider === "mistral" ||
       reasoningProvider === "openai-oss" ||
@@ -302,7 +301,7 @@ function migrateAgentMode() {
 
   let agentInferenceMode: InferenceMode = "openwhispr";
   if (cloudAgentMode === "byok") {
-    const localProviders = ["qwen", "llama", "mistral", "openai-oss", "gemma"];
+    const localProviders = ["llama", "mistral", "openai-oss", "gemma"];
     if (agentProvider === "custom") {
       agentInferenceMode = "self-hosted";
     } else if (

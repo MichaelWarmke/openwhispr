@@ -57,6 +57,12 @@ export function MeetingTranscriptionPanel() {
 
   const transcriptionModes: InferenceModeOption[] = [
     {
+      id: "providers",
+      label: t("settingsPage.transcription.modes.providers"),
+      description: t("settingsPage.transcription.modes.providersDesc"),
+      icon: <Key className="w-4 h-4" />,
+    },
+    {
       id: "local",
       label: t("settingsPage.transcription.modes.local"),
       description: t("settingsPage.transcription.modes.localDesc"),

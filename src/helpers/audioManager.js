@@ -1389,6 +1389,18 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         err.code = "API_KEY_MISSING";
         throw err;
       }
+    } else if (provider === "gemini") {
+      apiKey = s.geminiApiKey;
+      if (!isValidApiKey(apiKey, "gemini")) {
+        apiKey = await window.electronAPI?.getGeminiKey?.();
+      }
+      if (!isValidApiKey(apiKey, "gemini")) {
+        const err = new Error(
+          "Gemini API key not found. Please set your API key in Settings."
+        );
+        err.code = "API_KEY_MISSING";
+        throw err;
+      }
     } else {
       // Default to OpenAI
       // Prefer store value (user-entered via UI) over main process (.env)
