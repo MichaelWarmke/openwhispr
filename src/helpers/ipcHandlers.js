@@ -3160,17 +3160,23 @@ class IPCHandlers {
 
     ipcMain.handle(
       "proxy-gemini-transcription",
-      async (event, { audioBuffer, model, language }) => {
+      async (event, { audioBuffer, model, language, prompt }) => {
         const apiKey = this.environmentManager.getGeminiKey();
         if (!apiKey) {
           throw new Error("Gemini API key not configured");
         }
+
+        const { resolvePrompt } = await import("../config/prompts.js");
+        const systemPrompt = prompt || resolvePrompt("cleanup", { agentName: null, language });
 
         const geminiModel = model && model.startsWith("gemini") ? model : "gemini-2.5-flash";
         const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
         const base64Audio = Buffer.from(audioBuffer).toString("base64");
 
         const payload = {
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
           contents: [
             {
               parts: [
@@ -3179,9 +3185,6 @@ class IPCHandlers {
                     mimeType: "audio/webm",
                     data: base64Audio,
                   },
-                },
-                {
-                  text: "Generate an accurate, complete, word-for-word transcript of the audio speech. Output ONLY the transcript text with no introductory or concluding remarks.",
                 },
               ],
             },
@@ -7624,7 +7627,13 @@ class IPCHandlers {
             const contentType = AUDIO_MIME_TYPES[ext] || "audio/mpeg";
             const audioBuffer = fs.readFileSync(realByok);
 
+            const { resolvePrompt } = await import("../config/prompts.js");
+            const systemPrompt = resolvePrompt("cleanup", { agentName: null, language });
+
             const payload = {
+              systemInstruction: {
+                parts: [{ text: systemPrompt }],
+              },
               contents: [
                 {
                   parts: [
@@ -7633,9 +7642,6 @@ class IPCHandlers {
                         mimeType: contentType,
                         data: audioBuffer.toString("base64"),
                       },
-                    },
-                    {
-                      text: "Generate an accurate, complete, word-for-word transcript of the audio speech. Output ONLY the transcript text with no introductory or concluding remarks.",
                     },
                   ],
                 },
