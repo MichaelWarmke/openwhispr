@@ -95,7 +95,7 @@ import { useToast } from "./ui/useToast";
 import { useTheme } from "../hooks/useTheme";
 import type { GpuDevice, LocalTranscriptionProvider, InferenceMode } from "../types/electron";
 import logger from "../utils/logger";
-import { SettingsRow, InferenceModeSelector } from "./ui/SettingsSection";
+import { SettingsRow, SettingsSection, InferenceModeSelector } from "./ui/SettingsSection";
 import type { InferenceModeOption } from "./ui/SettingsSection";
 import { useSettingsLayout } from "./ui/useSettingsLayout";
 import { useUsage } from "../hooks/useUsage";
@@ -446,11 +446,33 @@ function NoteFormattingSettings() {
   );
 }
 
-function AiModelsSection({ useCleanupModel, setUseCleanupModel, toast }: AiModelsSectionProps) {
-  const { t } = useTranslation();
+function RetroAnalystSettings() {
   const retroReasoningModel = useSettingsStore((s) => s.retroReasoningModel);
   const setRetroReasoningModel = useSettingsStore((s) => s.setRetroReasoningModel);
   const cleanupModel = useSettingsStore((s) => s.cleanupModel);
+
+  return (
+    <div className="space-y-4">
+      <SettingsSection
+        title="Retrospective Analyst Reasoning Model"
+        description="Select a downloaded local GGUF model for retrospective analysis. Retrospectives run exclusively on local models to protect sensitive team data."
+      >
+        <ReasoningModelSelector
+          reasoningModel={retroReasoningModel || cleanupModel || ""}
+          setReasoningModel={setRetroReasoningModel}
+          localReasoningProvider="qwen"
+          setLocalReasoningProvider={() => {}}
+          cloudReasoningBaseUrl=""
+          setCloudReasoningBaseUrl={() => {}}
+          mode="local"
+        />
+      </SettingsSection>
+    </div>
+  );
+}
+
+function AiModelsSection({ useCleanupModel, setUseCleanupModel, toast }: AiModelsSectionProps) {
+  const { t } = useTranslation();
 
   const handleCleanupModeChange = (mode: InferenceMode) => {
     const toastKey = CLEANUP_MODE_TOAST_KEY[mode];
@@ -481,25 +503,6 @@ function AiModelsSection({ useCleanupModel, setUseCleanupModel, toast }: AiModel
           <GpuDeviceSelector purpose="intelligence" />
         </>
       )}
-
-      <SettingsPanel>
-        <SettingsPanelRow>
-          <SettingsRow
-            label="Retrospective Local Model"
-            description="Local GGUF model used for retrospective analysis. Retrospectives run exclusively on local models to protect sensitive team data."
-          >
-            <ReasoningModelSelector
-              reasoningModel={retroReasoningModel || cleanupModel || ""}
-              setReasoningModel={setRetroReasoningModel}
-              localReasoningProvider="qwen"
-              setLocalReasoningProvider={() => {}}
-              cloudReasoningBaseUrl=""
-              setCloudReasoningBaseUrl={() => {}}
-              mode="local"
-            />
-          </SettingsRow>
-        </SettingsPanelRow>
-      </SettingsPanel>
     </div>
   );
 }
@@ -510,7 +513,8 @@ type LlmTab =
   | "dictationAgent"
   | "dictationTranslation"
   | "noteFormatting"
-  | "chatIntelligence";
+  | "chatIntelligence"
+  | "retroAnalyst";
 
 const SPEECH_TABS: SpeechTab[] = ["dictation", "noteRecording", "upload", "benchmark"];
 const LLM_TABS: LlmTab[] = [
@@ -519,6 +523,7 @@ const LLM_TABS: LlmTab[] = [
   "dictationTranslation",
   "noteFormatting",
   "chatIntelligence",
+  "retroAnalyst",
 ];
 
 function useSubTab<T extends string>(storageKey: string, options: readonly T[], initial?: T) {
@@ -612,6 +617,7 @@ function LlmsTabs({
   renderDictationTranslation,
   renderNoteFormatting,
   renderChatIntelligence,
+  renderRetroAnalyst,
 }: {
   initialTab?: LlmTab;
   renderDictationCleanup: () => React.ReactNode;
@@ -619,6 +625,7 @@ function LlmsTabs({
   renderDictationTranslation: () => React.ReactNode;
   renderNoteFormatting: () => React.ReactNode;
   renderChatIntelligence: () => React.ReactNode;
+  renderRetroAnalyst: () => React.ReactNode;
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useSubTab<LlmTab>("settings.llmsTab", LLM_TABS, initialTab);
@@ -629,6 +636,7 @@ function LlmsTabs({
     { id: "dictationTranslation", name: t("settingsPage.llms.tabs.dictationTranslation") },
     { id: "noteFormatting", name: t("settingsPage.llms.tabs.noteFormatting") },
     { id: "chatIntelligence", name: t("settingsPage.llms.tabs.chatIntelligence") },
+    { id: "retroAnalyst", name: t("settingsPage.llms.tabs.retroAnalyst") || "Retrospective Analyst" },
   ];
 
   return (
@@ -646,6 +654,7 @@ function LlmsTabs({
           if (id === "dictationAgent") return <Sparkles className="w-3.5 h-3.5" />;
           if (id === "dictationTranslation") return <Languages className="w-3.5 h-3.5" />;
           if (id === "noteFormatting") return <BookOpen className="w-3.5 h-3.5" />;
+          if (id === "retroAnalyst") return <RotateCw className="w-3.5 h-3.5" />;
           return <MessageSquare className="w-3.5 h-3.5" />;
         }}
       />
@@ -654,6 +663,7 @@ function LlmsTabs({
       <TabPanel active={tab === "dictationTranslation"}>{renderDictationTranslation()}</TabPanel>
       <TabPanel active={tab === "noteFormatting"}>{renderNoteFormatting()}</TabPanel>
       <TabPanel active={tab === "chatIntelligence"}>{renderChatIntelligence()}</TabPanel>
+      <TabPanel active={tab === "retroAnalyst"}>{renderRetroAnalyst()}</TabPanel>
     </div>
   );
 }
@@ -3113,6 +3123,7 @@ EOF`,
             renderDictationAgent={() => <DictationAgentSettings />}
             renderDictationTranslation={() => <DictationTranslationSettings />}
             renderNoteFormatting={() => <NoteFormattingSettings />}
+            renderRetroAnalyst={() => <RetroAnalystSettings />}
           />
         </TabPanel>
       )}

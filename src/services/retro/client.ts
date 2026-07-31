@@ -114,7 +114,7 @@ export const retroClient = {
   listRetros: () => invoke<Retrospective[]>("retro.list"),
 
   // Analysis operations
-  describeModel: () => invoke<ModelDescribeResult>("models.describe"),
+  describeModel: (payload?: any) => invoke<ModelDescribeResult>("models.describe", payload),
   runAnalysis: (retrospectiveId: string) => invoke<RetroProposal[]>("analysis.run", { retrospectiveId }),
   cancelAnalysis: (retrospectiveId: string) =>
     window.electronAPI?.retro?.cancelAnalysis(retrospectiveId),

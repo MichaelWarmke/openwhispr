@@ -54,7 +54,7 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
       <div className="shrink-0 border-b border-border/40 bg-surface-1/30 px-6 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-primary" />
-          <span className="font-semibold text-sm text-foreground">ActionCoach Retrospectives</span>
+          <span className="font-semibold text-sm text-foreground">Retrospective Analyst</span>
         </div>
 
         <div className="flex items-center gap-1 bg-surface-1 p-1 rounded-lg border border-border/50">

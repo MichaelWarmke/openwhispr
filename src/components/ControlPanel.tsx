@@ -1073,7 +1073,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               <Suspense fallback={null}>
                 <RetrospectivesView
                   onOpenSettings={() => {
-                    setSettingsSection("llms");
+                    setSettingsSection("retroAnalyst");
                     setShowSettings(true);
                   }}
                 />

@@ -24,6 +24,7 @@ const SECTION_ALIASES: Record<string, SettingsSectionType> = {
   aiModels: "llms",
   aiProviders: "llms",
   retroModel: "llms",
+  retroAnalyst: "llms",
   agentConfig: "llms",
   agentMode: "llms",
   intelligence: "llms",
@@ -45,7 +46,8 @@ const LEGACY_SUB_TAB: Record<string, string> = {
   agentConfig: "chatIntelligence",
   aiModels: "dictationCleanup",
   aiProviders: "dictationCleanup",
-  retroModel: "dictationCleanup",
+  retroModel: "retroAnalyst",
+  retroAnalyst: "retroAnalyst",
   prompts: "dictationCleanup",
 };
 
