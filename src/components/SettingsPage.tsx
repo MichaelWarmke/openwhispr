@@ -447,26 +447,10 @@ function NoteFormattingSettings() {
 }
 
 function RetroAnalystSettings() {
-  const retroReasoningModel = useSettingsStore((s) => s.retroReasoningModel);
-  const setRetroReasoningModel = useSettingsStore((s) => s.setRetroReasoningModel);
-  const cleanupModel = useSettingsStore((s) => s.cleanupModel);
-
   return (
-    <div className="space-y-4">
-      <SettingsSection
-        title="Retrospective Analyst Reasoning Model"
-        description="Select a downloaded local GGUF model for retrospective analysis. Retrospectives run exclusively on local models to protect sensitive team data."
-      >
-        <ReasoningModelSelector
-          reasoningModel={retroReasoningModel || cleanupModel || ""}
-          setReasoningModel={setRetroReasoningModel}
-          localReasoningProvider="qwen"
-          setLocalReasoningProvider={() => {}}
-          cloudReasoningBaseUrl=""
-          setCloudReasoningBaseUrl={() => {}}
-          mode="local"
-        />
-      </SettingsSection>
+    <div className="space-y-6">
+      <InferenceConfigEditor scope="retroAnalyst" />
+      <GpuDeviceSelector purpose="intelligence" />
     </div>
   );
 }
@@ -547,11 +531,11 @@ function VADLabelWithInfo({ label, description }: { label: string; description: 
             className="inline-flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground transition-colors"
             aria-label={label}
           >
-            <Info className="h-3.5 w-3.5" />
+            <Info size={12} />
           </button>
         </PopoverTrigger>
-        <PopoverContent side="top" align="start" className="max-w-sm p-3">
-          <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+        <PopoverContent className="w-64 p-3 text-xs leading-relaxed font-normal bg-popover text-popover-foreground shadow-md border-border/40">
+          {description}
         </PopoverContent>
       </Popover>
     </div>
@@ -649,6 +633,7 @@ function LlmsTabs({
         providers={subTabs}
         selectedId={tab}
         onSelect={(id) => setTab(id as LlmTab)}
+        wrap
         renderIcon={(id) => {
           if (id === "dictationCleanup") return <Wand2 className="w-3.5 h-3.5" />;
           if (id === "dictationAgent") return <Sparkles className="w-3.5 h-3.5" />;
