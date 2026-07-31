@@ -498,11 +498,28 @@ export interface SettingsState
   dictationAgentCloudBaseUrl: string;
   dictationAgentRemoteUrl: string;
   dictationAgentCustomApiKey: string;
-
   cleanupDisableThinking: boolean;
   dictationAgentDisableThinking: boolean;
   noteFormattingDisableThinking: boolean;
   chatAgentDisableThinking: boolean;
+  retroAnalystDisableThinking: boolean;
+
+  retroAnalystMode: InferenceMode;
+  retroAnalystProvider: string;
+  retroAnalystModel: string;
+  retroAnalystCloudMode: string;
+  retroAnalystCloudBaseUrl: string;
+  retroAnalystRemoteUrl: string;
+  retroAnalystCustomApiKey: string;
+
+  setRetroAnalystMode: (mode: InferenceMode) => void;
+  setRetroAnalystProvider: (provider: string) => void;
+  setRetroAnalystModel: (model: string) => void;
+  setRetroAnalystCloudMode: (mode: string) => void;
+  setRetroAnalystCloudBaseUrl: (url: string) => void;
+  setRetroAnalystRemoteUrl: (url: string) => void;
+  setRetroAnalystCustomApiKey: (key: string) => void;
+  setRetroAnalystDisableThinking: (value: boolean) => void;
 
   customPrompts: Record<PromptKind, string>;
   setCustomPrompt: (kind: PromptKind, value: string) => void;
@@ -956,6 +973,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   cleanupProvider: readString("cleanupProvider", "openai"),
   retroReasoningModel: readString("retroReasoningModel", ""),
 
+  retroAnalystMode: (readString("retroAnalystMode", "local") as InferenceMode) || "local",
+  retroAnalystProvider: readString("retroAnalystProvider", "qwen"),
+  retroAnalystModel: readString("retroAnalystModel", ""),
+  retroAnalystCloudMode: readString("retroAnalystCloudMode", "openwhispr"),
+  retroAnalystCloudBaseUrl: readString("retroAnalystCloudBaseUrl", ""),
+  retroAnalystRemoteUrl: readString("retroAnalystRemoteUrl", ""),
+  retroAnalystCustomApiKey: "",
+  retroAnalystDisableThinking: readBoolean("retroAnalystDisableThinking", false),
+
   // Secrets hydrate from main process in initializeSettings, never from localStorage.
   openaiApiKey: "",
   anthropicApiKey: "",
@@ -1356,6 +1382,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setCleanupProvider: createStringSetter("cleanupProvider"),
   setCleanupModel: createStringSetter("cleanupModel"),
   setRetroReasoningModel: createStringSetter("retroReasoningModel"),
+
+  setRetroAnalystMode: createStringSetter("retroAnalystMode") as (mode: InferenceMode) => void,
+  setRetroAnalystProvider: createStringSetter("retroAnalystProvider"),
+  setRetroAnalystModel: createStringSetter("retroAnalystModel"),
+  setRetroAnalystCloudMode: createStringSetter("retroAnalystCloudMode"),
+  setRetroAnalystCloudBaseUrl: createStringSetter("retroAnalystCloudBaseUrl"),
+  setRetroAnalystRemoteUrl: createStringSetter("retroAnalystRemoteUrl"),
+  setRetroAnalystCustomApiKey: createStringSetter("retroAnalystCustomApiKey"),
+  setRetroAnalystDisableThinking: createBooleanSetter("retroAnalystDisableThinking"),
 
   setCustomDictionary: (words: string[]) => {
     if (isBrowser) localStorage.setItem("customDictionary", JSON.stringify(words));

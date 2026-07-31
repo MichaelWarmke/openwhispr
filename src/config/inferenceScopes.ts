@@ -78,6 +78,19 @@ export const INFERENCE_SCOPES = {
       disableThinking: "translationDisableThinking",
     },
   },
+  retroAnalyst: {
+    storeKeys: {
+      mode: "retroAnalystMode",
+      provider: "retroAnalystProvider",
+      model: "retroAnalystModel",
+      cloudMode: "retroAnalystCloudMode",
+      cloudBaseUrl: "retroAnalystCloudBaseUrl",
+      remoteUrl: "retroAnalystRemoteUrl",
+      customApiKey: "retroAnalystCustomApiKey",
+      disableThinking: "retroAnalystDisableThinking",
+    },
+    fallbackScope: "dictationCleanup",
+  },
 } as const satisfies Record<string, InferenceScopeDefinition>;
 
 export type InferenceScope = keyof typeof INFERENCE_SCOPES;

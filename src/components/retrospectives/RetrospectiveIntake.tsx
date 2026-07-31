@@ -43,6 +43,7 @@ export default function RetrospectiveIntake({
   const [modelStatus, setModelStatus] = useState<ModelDescribeResult | null>(null);
   const [isCheckingModel, setIsCheckingModel] = useState<boolean>(true);
 
+  const retroAnalystModel = useSettingsStore((s) => s.retroAnalystModel);
   const retroReasoningModel = useSettingsStore((s) => s.retroReasoningModel);
   const cleanupModel = useSettingsStore((s) => s.cleanupModel);
   const cleanupProvider = useSettingsStore((s) => s.cleanupProvider);
@@ -63,6 +64,7 @@ export default function RetrospectiveIntake({
     let isMounted = true;
     retroClient
       .describeModel({
+        retroAnalystModel,
         retroReasoningModel,
         cleanupModel,
         cleanupProvider,
@@ -98,7 +100,7 @@ export default function RetrospectiveIntake({
       isMounted = false;
       cleanupProgress();
     };
-  }, [onAnalysisSuccess, retroReasoningModel, cleanupModel, cleanupProvider, cleanupMode]);
+  }, [onAnalysisSuccess, retroAnalystModel, retroReasoningModel, cleanupModel, cleanupProvider, cleanupMode]);
 
   const handleEditSprintOpen = () => {
     if (selectedSprint) {

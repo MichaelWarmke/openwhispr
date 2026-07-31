@@ -562,7 +562,7 @@ class IPCHandlers {
     const localBridge = require("../services/localReasoningBridge").default;
     const isAvailable = await localBridge.isAvailable();
 
-    let targetModelId = settings.retroReasoningModel || null;
+    let targetModelId = settings.retroAnalystModel || settings.retroReasoningModel || null;
 
     if (!targetModelId) {
       targetModelId = settings.cleanupModel || null;
