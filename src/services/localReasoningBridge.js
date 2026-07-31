@@ -4,6 +4,8 @@ const debugLogger = require("../helpers/debugLogger");
 class LocalReasoningService {
   constructor() {
     this.isProcessing = false;
+    this.queue = [];
+    this.cancelledAnalyses = new Set();
   }
 
   async isAvailable() {
@@ -16,24 +18,79 @@ class LocalReasoningService {
     }
   }
 
-  async processText(text, modelId, config = {}) {
-    debugLogger.logReasoning("LOCAL_BRIDGE_START", {
-      modelId,
-      textLength: text.length,
-      hasConfig: Object.keys(config).length > 0,
-    });
+  cancelAnalysis(retrospectiveId) {
+    if (retrospectiveId) {
+      this.cancelledAnalyses.add(retrospectiveId);
+    }
+  }
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
+  clearCancelledAnalysis(retrospectiveId) {
+    if (retrospectiveId) {
+      this.cancelledAnalyses.delete(retrospectiveId);
+    }
+  }
+
+  isAnalysisCancelled(retrospectiveId) {
+    return retrospectiveId ? this.cancelledAnalyses.has(retrospectiveId) : false;
+  }
+
+  /**
+   * Enqueues a request with priority ('interactive' vs 'batch').
+   * 'interactive' jumps ahead of queued 'batch' requests.
+   */
+  async processText(text, modelId, config = {}) {
+    const priority = config.priority || "interactive";
+
+    return new Promise((resolve, reject) => {
+      const task = {
+        text,
+        modelId,
+        config,
+        priority,
+        resolve,
+        reject,
+      };
+
+      if (priority === "interactive") {
+        // Insert before first batch task, or after existing interactive tasks
+        const firstBatchIdx = this.queue.findIndex((t) => t.priority === "batch");
+        if (firstBatchIdx === -1) {
+          this.queue.push(task);
+        } else {
+          this.queue.splice(firstBatchIdx, 0, task);
+        }
+      } else {
+        this.queue.push(task);
+      }
+
+      this._processQueue();
+    });
+  }
+
+  async _processQueue() {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
     }
 
     this.isProcessing = true;
+    const task = this.queue.shift();
+    const { text, modelId, config, resolve, reject } = task;
+
+    // Check cancellation before starting
+    if (config.retrospectiveId && this.isAnalysisCancelled(config.retrospectiveId)) {
+      this.isProcessing = false;
+      reject(new Error("Analysis cancelled by user"));
+      this._processQueue();
+      return;
+    }
+
     const startTime = Date.now();
+    const timeoutMs = config.timeoutMs || 120000; // 120s per-chunk timeout
 
     try {
       const inferenceConfig = {
         maxTokens: config.maxTokens || this.calculateMaxTokens(text.length),
-        temperature: config.temperature || 0.7,
+        temperature: config.temperature ?? 0.7,
         topK: config.topK || 40,
         topP: config.topP || 0.9,
         repeatPenalty: config.repeatPenalty || 1.1,
@@ -43,10 +100,24 @@ class LocalReasoningService {
 
       debugLogger.logReasoning("LOCAL_BRIDGE_INFERENCE", {
         modelId,
+        priority: task.priority,
         config: inferenceConfig,
       });
 
-      const result = await modelManager.runInference(modelId, text, inferenceConfig);
+      // Wrap inference in per-chunk timeout
+      let timeoutId;
+      const timeoutPromise = new Promise((_, timeoutReject) => {
+        timeoutId = setTimeout(() => {
+          timeoutReject(new Error(`Inference timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      });
+
+      const inferencePromise = modelManager.runInference(modelId, text, inferenceConfig);
+
+      const result = await Promise.race([inferencePromise, timeoutPromise]).finally(() => {
+        clearTimeout(timeoutId);
+      });
+
       const stripThinking = config.disableThinking !== false;
       const cleanResult = stripThinking
         ? result
@@ -61,10 +132,9 @@ class LocalReasoningService {
         modelId,
         processingTimeMs: processingTime,
         resultLength: cleanResult.length,
-        resultPreview: cleanResult.substring(0, 100) + (cleanResult.length > 100 ? "..." : ""),
       });
 
-      return cleanResult;
+      resolve(cleanResult);
     } catch (error) {
       const processingTime = Date.now() - startTime;
 
@@ -72,12 +142,13 @@ class LocalReasoningService {
         modelId,
         processingTimeMs: processingTime,
         error: error.message,
-        stack: error.stack,
       });
 
-      throw error;
+      reject(error);
     } finally {
       this.isProcessing = false;
+      // Yield execution slightly so callers/queue can re-order or cancel
+      setImmediate(() => this._processQueue());
     }
   }
 

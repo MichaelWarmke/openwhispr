@@ -2067,6 +2067,11 @@ declare global {
       } | null>;
       updateNotificationReady?: () => Promise<void>;
       updateNotificationRespond?: (action: string) => Promise<{ success: boolean }>;
+      retro?: {
+        invoke: (op: string, payload?: any) => Promise<any>;
+        cancelAnalysis: (retrospectiveId: string) => Promise<any>;
+        onProgress: (callback: (data: any) => void) => () => void;
+      };
       onPreviewText?: (callback: (text: string) => void) => () => void;
       onPreviewAppend?: (callback: (text: string) => void) => () => void;
       onPreviewHold?: (callback: (payload: { showCleanup: boolean }) => void) => () => void;

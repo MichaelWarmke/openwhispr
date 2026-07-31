@@ -13,6 +13,7 @@ import {
   UserPlus,
   X,
   Search,
+  RotateCcw,
 } from "lucide-react";
 import logoIcon from "../assets/icon.png";
 import { useTranslation } from "react-i18next";
@@ -35,7 +36,13 @@ const rowButtonClass =
   "group flex items-center gap-2.5 w-full h-8 px-2.5 rounded-md text-left outline-none hover:bg-foreground/4 dark:hover:bg-white/4 focus-visible:ring-1 focus-visible:ring-primary/30 transition-colors duration-150";
 
 export type ControlPanelView =
-  "home" | "chat" | "personal-notes" | "dictionary" | "upload" | "integrations";
+  | "home"
+  | "chat"
+  | "personal-notes"
+  | "dictionary"
+  | "upload"
+  | "integrations"
+  | "retrospectives";
 
 interface ControlPanelSidebarProps {
   activeView: ControlPanelView;
@@ -97,6 +104,7 @@ export default function ControlPanelSidebar({
     { id: "chat", label: t("sidebar.chat"), icon: MessageSquare },
     { id: "personal-notes", label: t("sidebar.notes"), icon: NotebookPen },
     { id: "upload", label: t("sidebar.upload"), icon: Upload },
+    { id: "retrospectives", label: t("sidebar.retrospectives"), icon: RotateCcw },
     { id: "dictionary", label: t("sidebar.dictionary"), icon: BookOpen },
     { id: "integrations", label: t("sidebar.integrations"), icon: Blocks },
   ];

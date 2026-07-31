@@ -22,6 +22,8 @@ export type { SettingsSectionType };
 // Legacy deep-links land on the matching sub-tab via LEGACY_SUB_TAB.
 const SECTION_ALIASES: Record<string, SettingsSectionType> = {
   aiModels: "llms",
+  aiProviders: "llms",
+  retroModel: "llms",
   agentConfig: "llms",
   agentMode: "llms",
   intelligence: "llms",
@@ -42,6 +44,8 @@ const LEGACY_SUB_TAB: Record<string, string> = {
   agentMode: "chatIntelligence",
   agentConfig: "chatIntelligence",
   aiModels: "dictationCleanup",
+  aiProviders: "dictationCleanup",
+  retroModel: "dictationCleanup",
   prompts: "dictationCleanup",
 };
 

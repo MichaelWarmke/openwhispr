@@ -1013,4 +1013,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getUpdateNotificationData: () => ipcRenderer.invoke("get-update-notification-data"),
   updateNotificationReady: () => ipcRenderer.invoke("update-notification-ready"),
   updateNotificationRespond: (action) => ipcRenderer.invoke("update-notification-respond", action),
+
+  // Retrospective Action Coach
+  retro: {
+    invoke: (op, payload) => ipcRenderer.invoke("retro:invoke", { op, payload }),
+    cancelAnalysis: (retrospectiveId) =>
+      ipcRenderer.invoke("retro:analysis-cancel", { retrospectiveId }),
+    onProgress: (callback) => {
+      const listener = (_event, data) => callback?.(data);
+      ipcRenderer.on("retro:analysis-progress", listener);
+      return () => ipcRenderer.removeListener("retro:analysis-progress", listener);
+    },
+  },
 });

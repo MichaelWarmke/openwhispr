@@ -75,6 +75,7 @@ const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
 const DictionaryView = React.lazy(() => import("./DictionaryView"));
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
 const IntegrationsView = React.lazy(() => import("./IntegrationsView"));
+const RetrospectivesView = React.lazy(() => import("./retrospectives/RetrospectivesView"));
 const ChatView = React.lazy(() => import("./chat/ChatView"));
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
 
@@ -1063,6 +1064,16 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   isPaid={!!(usage?.isSubscribed || usage?.isTrial)}
                   onUpgrade={() => {
                     setSettingsSection("plansBilling");
+                    setShowSettings(true);
+                  }}
+                />
+              </Suspense>
+            )}
+            {activeView === "retrospectives" && (
+              <Suspense fallback={null}>
+                <RetrospectivesView
+                  onOpenSettings={() => {
+                    setSettingsSection("llms");
                     setShowSettings(true);
                   }}
                 />

@@ -14,6 +14,7 @@ export interface PromptBundle {
   fullPrompt: string;
   dictionarySuffix: string;
   translatePrompt: string;
+  retroPrompt?: string;
 }
 
 export const en: PromptBundle = enPrompts;

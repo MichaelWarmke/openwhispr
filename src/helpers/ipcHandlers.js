@@ -19,6 +19,10 @@ const { createTinfoilRealtimeSocket } = require("./tinfoilSecureClient");
 const { getTinfoilChatModels } = require("./tinfoilCatalog");
 const { transcribeWithTinfoil } = require("./tinfoilTranscription");
 const AudioStorageManager = require("./audioStorage");
+const { RetroRepository } = require("./retroRepository");
+const { chunkTranscript } = require("../utils/retroChunking.ts");
+const { parseRetroResponse, buildRepairPrompt } = require("../utils/retroResponseParser.ts");
+const { deduplicateProposals } = require("../utils/retroDedup.ts");
 
 // Tinfoil's only realtime STT model — fallback when the renderer omits one.
 const TINFOIL_REALTIME_MODEL = "voxtral-mini-4b-realtime";
@@ -544,6 +548,175 @@ class IPCHandlers {
       const markdownMirror = require("./markdownMirror");
       markdownMirror.deleteNote(noteId);
     });
+  }
+
+  _getRetroRepository() {
+    if (!this._retroRepository && this.databaseManager?.db) {
+      this._retroRepository = new RetroRepository(this.databaseManager.db);
+    }
+    return this._retroRepository;
+  }
+
+  async _describeRetroModel(settings = {}) {
+    const modelManager = require("./modelManagerBridge").default;
+    const localBridge = require("../services/localReasoningBridge").default;
+    const isAvailable = await localBridge.isAvailable();
+
+    let targetModelId = settings.retroReasoningModel || null;
+
+    if (!targetModelId) {
+      targetModelId = settings.cleanupModel || null;
+    }
+
+    let isDownloaded = false;
+    if (targetModelId) {
+      isDownloaded = await modelManager.isModelDownloaded(targetModelId);
+    }
+
+    // Fallback: If specified model is missing or not downloaded, search for any downloaded local GGUF model
+    if (!isDownloaded) {
+      try {
+        const allModels = await modelManager.getAllModels();
+        const downloadedModel = allModels.find((m) => m.isDownloaded);
+        if (downloadedModel) {
+          targetModelId = downloadedModel.id;
+          isDownloaded = true;
+        }
+      } catch (err) {
+        debugLogger.error("Failed to query downloaded local models", { error: err.message });
+      }
+    }
+
+    if (!targetModelId || !isDownloaded || !isAvailable) {
+      return { available: false, modelId: targetModelId || null, providerId: "local", contextLength: 4096 };
+    }
+
+    const modelInfo = modelManager.findModelById(targetModelId);
+    const contextLength = modelInfo?.model?.contextLength || 4096;
+
+    return {
+      available: true,
+      modelId: targetModelId,
+      providerId: "local",
+      contextLength,
+    };
+  }
+
+  async _runRetroAnalysis(retrospectiveId, settings = {}, senderWindow) {
+    const repo = this._getRetroRepository();
+    const retro = await repo.getRetrospective(retrospectiveId);
+    if (!retro) throw new Error("Retrospective not found");
+
+    const sprint = await repo.getSprintSnapshot(retro.sprint_id);
+    const modelStatus = await this._describeRetroModel(settings);
+
+    if (!modelStatus.available || !modelStatus.modelId) {
+      throw new Error("No local reasoning model selected. Retrospective analysis requires a locally installed model.");
+    }
+
+    const localBridge = require("../services/localReasoningBridge").default;
+    localBridge.clearCancelledAnalysis(retrospectiveId);
+
+    await repo.updateRetrospective(retrospectiveId, { processing_state: "analyzing" });
+
+    const emitProgress = (stage, chunkIndex = 0, chunkCount = 1, error = null) => {
+      const data = { retrospectiveId, stage, chunkIndex, chunkCount, error };
+      if (senderWindow && !senderWindow.isDestroyed()) {
+        senderWindow.send("retro:analysis-progress", data);
+      }
+      this.broadcastToWindows("retro:analysis-progress", data);
+    };
+
+    const chunks = chunkTranscript(retro.transcript, modelStatus.contextLength);
+    const totalChunks = chunks.length || 1;
+
+    emitProgress("analyzing", 0, totalChunks);
+
+    const rawParsedItems = [];
+    const sprintContext = sprint
+      ? `SPRINT CONTEXT:\nSprint: ${sprint.name}\nCommitted: ${sprint.committed_points} pts | Completed: ${sprint.completed_points} pts | Velocity: ${sprint.velocity} pts\nIssues: ${sprint.completed_issues}/${sprint.total_issues} completed (${sprint.blocked_issues} blocked)\nBurndown Trend: ${sprint.burndown_trend}\nBlockers: ${sprint.blockers || "None"}\n`
+      : "";
+
+    const systemPrompt =
+      `You are an expert Agile coach analyzing a retrospective transcript.\n` +
+      sprintContext +
+      `Extract explicitly stated action items and suggest agile-coach improvements.\n` +
+      `Return ONLY a JSON object with this exact schema (max 5 explicitActions and 5 coachSuggestions):\n` +
+      `{\n  "explicitActions": [{ "title": "...", "description": "..." }],\n  "coachSuggestions": [{ "title": "...", "description": "...", "basis": "..." }]\n}\n` +
+      `Do not include any prose, commentary, or markdown formatting outside JSON.`;
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (localBridge.isAnalysisCancelled(retrospectiveId)) {
+        emitProgress("completed", totalChunks, totalChunks);
+        return [];
+      }
+
+      emitProgress("analyzing", i + 1, totalChunks);
+
+      const chunk = chunks[i];
+      let output;
+      try {
+        output = await localBridge.processText(chunk.text, modelStatus.modelId, {
+          priority: "batch",
+          retrospectiveId,
+          systemPrompt,
+          temperature: 0.0,
+          maxTokens: 2048,
+          timeoutMs: 120000,
+        });
+      } catch (err) {
+        if (err.message && err.message.includes("cancelled")) {
+          emitProgress("completed", totalChunks, totalChunks);
+          return [];
+        }
+        debugLogger.error("Retro chunk inference failed", { chunkIndex: i, error: err.message });
+        continue;
+      }
+
+      let parsed = parseRetroResponse(output);
+
+      if (parsed.unparsed) {
+        emitProgress("parsing", i + 1, totalChunks);
+        try {
+          const repairPrompt = buildRepairPrompt(output);
+          const repairedOutput = await localBridge.processText(repairPrompt, modelStatus.modelId, {
+            priority: "batch",
+            retrospectiveId,
+            systemPrompt: "Return only valid JSON.",
+            temperature: 0.0,
+            maxTokens: 2048,
+            timeoutMs: 120000,
+          });
+          parsed = parseRetroResponse(repairedOutput);
+        } catch (repairErr) {
+          debugLogger.warn("Repair retry failed", { chunkIndex: i, error: repairErr.message });
+        }
+      }
+
+      if (!parsed.unparsed) {
+        for (const item of parsed.explicitActions) {
+          rawParsedItems.push({ title: item.title, description: item.description, source: "explicit" });
+        }
+        for (const item of parsed.coachSuggestions) {
+          rawParsedItems.push({ title: item.title, description: item.description, basis: item.basis, source: "coach" });
+        }
+      }
+    }
+
+    const existingProposals = await repo.listProposals(retrospectiveId);
+    const existingActions = await repo.listTrackedActions();
+    const excludeTitlesSet = new Set([
+      ...existingProposals.map((p) => p.title),
+      ...existingActions.map((a) => a.title),
+    ]);
+
+    const deduped = deduplicateProposals(rawParsedItems, excludeTitlesSet);
+
+    const nextRunCount = (retro.analysis_run_count || 0) + 1;
+    const saved = await repo.saveProposals(retrospectiveId, deduped, nextRunCount);
+
+    emitProgress("completed", totalChunks, totalChunks);
+    return saved;
   }
 
   _buildFolderMap() {
@@ -1275,6 +1448,100 @@ class IPCHandlers {
 
     ipcMain.handle("db-update-note-cloud-id", async (event, id, cloudId) => {
       return this.databaseManager.updateNoteCloudId(id, cloudId);
+    });
+
+    // Retrospective Action Coach IPC
+    ipcMain.handle("retro:analysis-cancel", async (event, { retrospectiveId }) => {
+      const localBridge = require("../services/localReasoningBridge").default;
+      localBridge.cancelAnalysis(retrospectiveId);
+      return { success: true };
+    });
+
+    ipcMain.handle("retro:invoke", async (event, { op, payload = {} }) => {
+      const repo = this._getRetroRepository();
+      const ALLOWED_OPS = new Set([
+        "sprints.list",
+        "sprints.get",
+        "sprints.updateMetrics",
+        "retro.create",
+        "retro.get",
+        "retro.update",
+        "retro.list",
+        "retro.copyAudio",
+        "proposals.list",
+        "proposals.accept",
+        "proposals.dismiss",
+        "actions.list",
+        "actions.createManual",
+        "actions.update",
+        "actions.delete",
+        "actions.listOwners",
+        "jira.createMock",
+        "models.describe",
+        "analysis.run",
+      ]);
+
+      if (!ALLOWED_OPS.has(op)) {
+        throw new Error(`Invalid retro operation: ${op}`);
+      }
+
+      switch (op) {
+        case "sprints.list":
+          return repo.listSprints();
+        case "sprints.get":
+          return repo.getSprintSnapshot(payload.sprintId);
+        case "sprints.updateMetrics":
+          return repo.updateSprintMetrics(payload.sprintId, payload.metrics);
+        case "retro.create":
+          return repo.createRetrospective(payload);
+        case "retro.get":
+          return repo.getRetrospective(payload.id);
+        case "retro.update":
+          return repo.updateRetrospective(payload.id, payload.updates);
+        case "retro.list":
+          return repo.listRetrospectives();
+        case "retro.copyAudio": {
+          const { sourcePath, retrospectiveId } = payload;
+          const ext = path.extname(sourcePath) || ".wav";
+          const retroAudioDir = path.join(app.getPath("userData"), "retro-audio");
+          fs.mkdirSync(retroAudioDir, { recursive: true });
+          const destPath = path.join(retroAudioDir, `${retrospectiveId}${ext}`);
+          fs.copyFileSync(sourcePath, destPath);
+          return { copiedPath: destPath };
+        }
+        case "proposals.list":
+          return repo.listProposals(payload.retrospectiveId);
+        case "proposals.accept":
+          return repo.acceptProposal(payload.proposalId, payload.editedData);
+        case "proposals.dismiss":
+          return repo.dismissProposal(payload.proposalId);
+        case "actions.list":
+          return repo.listTrackedActions(payload);
+        case "actions.createManual":
+          return repo.createManualAction(payload);
+        case "actions.update":
+          return repo.updateTrackedAction(payload.id, payload.updates);
+        case "actions.delete":
+          return repo.deleteTrackedAction(payload.id);
+        case "actions.listOwners":
+          return repo.listOwners();
+        case "jira.createMock":
+          return repo.createMockJiraTicket(
+            payload.trackedActionId,
+            payload.summary,
+            payload.description
+          );
+        case "models.describe":
+          return this._describeRetroModel(payload || {});
+        case "analysis.run":
+          return this._runRetroAnalysis(
+            payload.retrospectiveId,
+            payload.settings || {},
+            event.sender
+          );
+        default:
+          throw new Error(`Unsupported retro op: ${op}`);
+      }
     });
 
     ipcMain.handle("db-get-folders", async () => {

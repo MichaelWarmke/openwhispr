@@ -40,6 +40,7 @@ export interface CleanupSettings {
   cleanupCloudMode: string;
   cleanupMode: InferenceMode;
   cleanupRemoteUrl: string;
+  retroReasoningModel: string;
 }
 
 export interface HotkeySettings {

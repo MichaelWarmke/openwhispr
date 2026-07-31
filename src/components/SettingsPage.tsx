@@ -84,6 +84,7 @@ import ChatAgentSettings from "./settings/ChatAgentSettings";
 import DictationAgentSettings from "./settings/DictationAgentSettings";
 import DictationTranslationSettings from "./settings/DictationTranslationSettings";
 import InferenceConfigEditor from "./settings/InferenceConfigEditor";
+import ReasoningModelSelector from "./ReasoningModelSelector";
 import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
 import { UploadTranscriptionPanel } from "./settings/UploadSettings";
 import ModelBenchmark from "./settings/ModelBenchmark";
@@ -447,6 +448,9 @@ function NoteFormattingSettings() {
 
 function AiModelsSection({ useCleanupModel, setUseCleanupModel, toast }: AiModelsSectionProps) {
   const { t } = useTranslation();
+  const retroReasoningModel = useSettingsStore((s) => s.retroReasoningModel);
+  const setRetroReasoningModel = useSettingsStore((s) => s.setRetroReasoningModel);
+  const cleanupModel = useSettingsStore((s) => s.cleanupModel);
 
   const handleCleanupModeChange = (mode: InferenceMode) => {
     const toastKey = CLEANUP_MODE_TOAST_KEY[mode];
@@ -477,6 +481,25 @@ function AiModelsSection({ useCleanupModel, setUseCleanupModel, toast }: AiModel
           <GpuDeviceSelector purpose="intelligence" />
         </>
       )}
+
+      <SettingsPanel>
+        <SettingsPanelRow>
+          <SettingsRow
+            label="Retrospective Local Model"
+            description="Local GGUF model used for retrospective analysis. Retrospectives run exclusively on local models to protect sensitive team data."
+          >
+            <ReasoningModelSelector
+              reasoningModel={retroReasoningModel || cleanupModel || ""}
+              setReasoningModel={setRetroReasoningModel}
+              localReasoningProvider="qwen"
+              setLocalReasoningProvider={() => {}}
+              cloudReasoningBaseUrl=""
+              setCloudReasoningBaseUrl={() => {}}
+              mode="local"
+            />
+          </SettingsRow>
+        </SettingsPanelRow>
+      </SettingsPanel>
     </div>
   );
 }
