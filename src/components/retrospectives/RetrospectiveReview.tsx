@@ -13,6 +13,7 @@ import {
   Lightbulb,
   MessageSquare,
   AlertTriangle,
+  CheckSquare,
   X,
 } from "lucide-react";
 import { Button } from "../ui/button";
@@ -31,16 +32,7 @@ export default function RetrospectiveReview({
   onReanalyze,
 }: RetrospectiveReviewProps) {
   const [proposals, setProposals] = useState<RetroProposal[]>([]);
-  const [ownersList, setOwnersList] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-
-  // Edit / Accept Modal state
-  const [editingProposal, setEditingProposal] = useState<RetroProposal | null>(null);
-  const [editTitle, setEditTitle] = useState<string>("");
-  const [editDescription, setEditDescription] = useState<string>("");
-  const [editOwner, setEditOwner] = useState<string>("");
-  const [editEstimateValue, setEditEstimateValue] = useState<number>(1);
-  const [editEstimateUnit, setEditEstimateUnit] = useState<string>("days");
 
   // Re-analyze Confirmation Modal state
   const [showReanalyzeConfirm, setShowReanalyzeConfirm] = useState<boolean>(false);
@@ -50,8 +42,6 @@ export default function RetrospectiveReview({
     try {
       const list = await retroClient.listProposals(retrospectiveId);
       setProposals(list);
-      const owners = await retroClient.listOwners();
-      setOwnersList(owners);
     } catch (err) {
       console.error("Failed to load proposals", err);
     } finally {
@@ -63,26 +53,9 @@ export default function RetrospectiveReview({
     fetchProposals();
   }, [retrospectiveId]);
 
-  const handleOpenAcceptModal = (p: RetroProposal) => {
-    setEditingProposal(p);
-    setEditTitle(p.title);
-    setEditDescription(p.description);
-    setEditOwner("");
-    setEditEstimateValue(1);
-    setEditEstimateUnit("days");
-  };
-
-  const handleConfirmAccept = async () => {
-    if (!editingProposal) return;
+  const handleAccept = async (id: string) => {
     try {
-      await retroClient.acceptProposal(editingProposal.id, {
-        title: editTitle,
-        description: editDescription,
-        owner: editOwner,
-        estimate_value: editEstimateValue,
-        estimate_unit: editEstimateUnit,
-      });
-      setEditingProposal(null);
+      await retroClient.acceptProposal(id);
       await fetchProposals();
     } catch (err) {
       console.error("Failed to accept proposal", err);
@@ -122,17 +95,8 @@ export default function RetrospectiveReview({
           >
             <RefreshCcw size={13} /> Re-analyze transcript
           </Button>
-          <Button size="sm" onClick={onGoToDashboard} className="h-8 text-xs font-medium">
-            View Action Dashboard →
-          </Button>
         </div>
       </div>
-
-      <datalist id="owners-datalist">
-        {ownersList.map((owner) => (
-          <option key={owner} value={owner} />
-        ))}
-      </datalist>
 
       {/* Proposals Content */}
       {isLoading ? (
@@ -160,9 +124,16 @@ export default function RetrospectiveReview({
             </div>
 
             {explicitProposals.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic pl-6">
-                No explicit action items found in transcript.
-              </p>
+              <div className="pl-6">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onGoToDashboard}
+                  className="h-8 text-xs gap-1.5"
+                >
+                  <CheckSquare size={13} /> Go to Action Dashboard
+                </Button>
+              </div>
             ) : (
               <div className="grid gap-3">
                 {explicitProposals.map((p) => (
@@ -182,19 +153,24 @@ export default function RetrospectiveReview({
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button
-                          size="sm"
-                          onClick={() => handleOpenAcceptModal(p)}
-                          className="h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                          size="icon"
+                          variant="outline"
+                          title="Accept action"
+                          aria-label="Accept action"
+                          onClick={() => handleAccept(p.id)}
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
                         >
-                          Accept to tracking
+                          <CheckCircle size={16} />
                         </Button>
                         <Button
+                          size="icon"
                           variant="ghost"
-                          size="sm"
+                          title="Dismiss proposal"
+                          aria-label="Dismiss proposal"
                           onClick={() => handleDismiss(p.id)}
-                          className="h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         >
-                          Dismiss
+                          <XCircle size={16} />
                         </Button>
                       </div>
                     </div>
@@ -236,19 +212,24 @@ export default function RetrospectiveReview({
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button
-                          size="sm"
-                          onClick={() => handleOpenAcceptModal(p)}
-                          className="h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                          size="icon"
+                          variant="outline"
+                          title="Accept action"
+                          aria-label="Accept action"
+                          onClick={() => handleAccept(p.id)}
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
                         >
-                          Accept to tracking
+                          <CheckCircle size={16} />
                         </Button>
                         <Button
+                          size="icon"
                           variant="ghost"
-                          size="sm"
+                          title="Dismiss proposal"
+                          aria-label="Dismiss proposal"
                           onClick={() => handleDismiss(p.id)}
-                          className="h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         >
-                          Dismiss
+                          <XCircle size={16} />
                         </Button>
                       </div>
                     </div>
@@ -261,97 +242,6 @@ export default function RetrospectiveReview({
           <p className="text-xs text-muted-foreground italic">
             Suggestions are advisory and are never tracked without acceptance.
           </p>
-        </div>
-      )}
-
-      {/* Accept & Edit Modal */}
-      {editingProposal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-border bg-background p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">Accept Action to Tracking</h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setEditingProposal(null)}
-              >
-                <X size={14} />
-              </Button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-medium text-muted-foreground">Title</label>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full h-8 px-2.5 mt-1 rounded border border-border bg-surface-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium text-muted-foreground">Description</label>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  rows={3}
-                  className="w-full p-2.5 mt-1 rounded border border-border bg-surface-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-medium text-muted-foreground">Owner</label>
-                  <input
-                    type="text"
-                    list="owners-datalist"
-                    value={editOwner}
-                    onChange={(e) => setEditOwner(e.target.value)}
-                    placeholder="e.g. Alex"
-                    className="w-full h-8 px-2.5 mt-1 rounded border border-border bg-surface-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="font-medium text-muted-foreground">Estimate</label>
-                  <div className="flex gap-1.5 mt-1">
-                    <input
-                      type="number"
-                      min={0}
-                      value={editEstimateValue}
-                      onChange={(e) => setEditEstimateValue(Number(e.target.value))}
-                      className="w-20 h-8 px-2 rounded border border-border bg-surface-1 text-sm text-foreground"
-                    />
-                    <select
-                      value={editEstimateUnit}
-                      onChange={(e) => setEditEstimateUnit(e.target.value)}
-                      className="h-8 px-2 rounded border border-border bg-surface-1 text-xs text-foreground"
-                    >
-                      <option value="minutes">minutes</option>
-                      <option value="hours">hours</option>
-                      <option value="days">days</option>
-                      <option value="weeks">weeks</option>
-                      <option value="story_points">story pts</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditingProposal(null)}
-              >
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleConfirmAccept}>
-                Confirm & Track Action
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 

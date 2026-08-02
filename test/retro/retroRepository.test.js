@@ -29,11 +29,11 @@ test("runRetroMigrations - fresh install and idempotent re-run", (t) => {
   const { db } = testEnv;
 
   runRetroMigrations(db);
-  assert.equal(db.pragma("user_version", { simple: true }), 2);
+  assert.equal(db.pragma("user_version", { simple: true }), 3);
 
   // Re-run
   runRetroMigrations(db);
-  assert.equal(db.pragma("user_version", { simple: true }), 2);
+  assert.equal(db.pragma("user_version", { simple: true }), 3);
 });
 
 test("Sprint operations - list, get, and update metrics", async (t) => {
@@ -63,7 +63,7 @@ test("Sprint operations - list, get, and update metrics", async (t) => {
   assert.equal(updated.completed_points, 40);
 });
 
-test("Retrospective and proposal CRUD and state transitions", async (t) => {
+test("Retrospective and proposal CRUD, suggested fields, and one-step acceptance", async (t) => {
   const testEnv = createTestRepo(t);
   if (!testEnv) return;
   const { repo } = testEnv;
@@ -73,21 +73,37 @@ test("Retrospective and proposal CRUD and state transitions", async (t) => {
     title: "Sprint 24 Retro",
     transcript: "We agreed that PR reviews are delaying releases.",
     sourceKind: "text",
+    meetingOwner: "Jordan Smith",
   });
 
   assert.ok(retro.id);
   assert.equal(retro.processing_state, "idle");
+  assert.equal(retro.meeting_owner, "Jordan Smith");
 
   const savedProposals = await repo.saveProposals(
     retro.id,
     [
-      { title: "Improve PR review response time", description: "Set 24h SLA", source: "explicit" },
-      { title: "Add mid-sprint scope review", description: "Check scope", basis: "Burndown", source: "coach" },
+      {
+        title: "Improve PR review response time",
+        description: "Set 24h SLA",
+        source: "explicit",
+        suggestedOwner: "Alex Chen",
+        suggestedEstimateValue: 2,
+        suggestedEstimateUnit: "hours",
+      },
+      {
+        title: "Add mid-sprint scope review",
+        description: "Check scope",
+        basis: "Burndown",
+        source: "coach",
+      },
     ],
     1
   );
 
   assert.equal(savedProposals.length, 2);
+  assert.equal(savedProposals[0].suggested_owner, "Alex Chen");
+  assert.equal(savedProposals[0].suggested_estimate_value, 2);
 
   const pending = await repo.listProposals(retro.id);
   assert.equal(pending.length, 2);
@@ -98,21 +114,56 @@ test("Retrospective and proposal CRUD and state transitions", async (t) => {
   assert.equal(remainingPending.length, 1);
   assert.equal(remainingPending[0].id, savedProposals[0].id);
 
-  // Accept the other proposal
-  const trackedAction = await repo.acceptProposal(savedProposals[0].id, {
-    owner: "Alex",
-    estimate_value: 2,
-    estimate_unit: "days",
-  });
+  // One-step accept without editedData uses proposal suggested owner & estimate
+  const trackedAction = await repo.acceptProposal(savedProposals[0].id);
 
   assert.ok(trackedAction.id);
-  assert.equal(trackedAction.owner, "Alex");
-  assert.equal(trackedAction.owner_normalized, "alex");
-  assert.equal(trackedAction.estimate_minutes, 960);
+  assert.equal(trackedAction.owner, "Alex Chen");
+  assert.equal(trackedAction.owner_normalized, "alex chen");
+  assert.equal(trackedAction.estimate_value, 2);
+  assert.equal(trackedAction.estimate_unit, "hours");
+  assert.equal(trackedAction.estimate_minutes, 120);
   assert.equal(trackedAction.original_title, "Improve PR review response time");
 
   const pendingAfterAccept = await repo.listProposals(retro.id);
   assert.equal(pendingAfterAccept.length, 0);
+});
+
+test("Retrospective one-step accept fallback to meeting_owner and Unassigned", async (t) => {
+  const testEnv = createTestRepo(t);
+  if (!testEnv) return;
+  const { repo } = testEnv;
+
+  const retro = await repo.createRetrospective({
+    sprintId: "sprint-24",
+    title: "Meeting Owner Fallback Retro",
+    transcript: "Test fallback owner",
+    meetingOwner: "Morgan Lead",
+  });
+
+  const [p1] = await repo.saveProposals(
+    retro.id,
+    [{ title: "Fallback task", description: "No owner in proposal", source: "explicit" }],
+    1
+  );
+
+  const action1 = await repo.acceptProposal(p1.id);
+  assert.equal(action1.owner, "Morgan Lead");
+
+  const retroNoOwner = await repo.createRetrospective({
+    sprintId: "sprint-24",
+    title: "Unassigned Retro",
+    transcript: "Test unassigned owner",
+  });
+
+  const [p2] = await repo.saveProposals(
+    retroNoOwner.id,
+    [{ title: "Unassigned task", description: "No owner anywhere", source: "explicit" }],
+    1
+  );
+
+  const action2 = await repo.acceptProposal(p2.id);
+  assert.equal(action2.owner, "Unassigned");
 });
 
 test("Manual action creation, filtering, deletion, and owner list", async (t) => {

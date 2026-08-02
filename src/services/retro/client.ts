@@ -21,6 +21,7 @@ export interface Retrospective {
   transcript: string;
   source_kind: "audio" | "text" | "paste";
   audio_path: string | null;
+  meeting_owner?: string | null;
   processing_state: "idle" | "transcribing" | "analyzing" | "review" | "completed";
   analysis_run_count: number;
   created_at: string;
@@ -37,6 +38,9 @@ export interface RetroProposal {
   state: "pending" | "accepted" | "dismissed" | "superseded";
   dedup_key: string;
   analysis_run: number;
+  suggested_owner?: string | null;
+  suggested_estimate_value?: number | null;
+  suggested_estimate_unit?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -107,6 +111,7 @@ export const retroClient = {
     transcript: string;
     sourceKind: "audio" | "text" | "paste";
     audioPath?: string;
+    meetingOwner?: string;
   }) => invoke<Retrospective>("retro.create", data),
   getRetro: (id: string) => invoke<Retrospective | null>("retro.get", { id }),
   updateRetro: (id: string, updates: Partial<Retrospective>) =>

@@ -4,6 +4,7 @@ import {
   type Retrospective,
   retroClient,
 } from "../../services/retro/client";
+import { useAuth } from "../../hooks/useAuth";
 import RetrospectiveIntake from "./RetrospectiveIntake";
 import RetrospectiveReview from "./RetrospectiveReview";
 import RetrospectiveDashboard from "./RetrospectiveDashboard";
@@ -17,6 +18,9 @@ interface RetrospectivesViewProps {
 export type RetroStage = "intake" | "review" | "dashboard";
 
 export default function RetrospectivesView({ onOpenSettings }: RetrospectivesViewProps) {
+  const { user } = useAuth();
+  const uploaderIdentity = user?.name?.trim() || user?.email?.trim() || "";
+
   const [stage, setStage] = useState<RetroStage>("intake");
   const [sprints, setSprints] = useState<SprintSnapshot[]>([]);
   const [currentRetroId, setCurrentRetroId] = useState<string | null>(null);
@@ -102,6 +106,7 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
         ) : stage === "intake" ? (
           <RetrospectiveIntake
             sprints={sprints}
+            uploaderIdentity={uploaderIdentity}
             onSprintUpdate={fetchSprints}
             onAnalysisSuccess={handleAnalysisSuccess}
             onOpenSettings={onOpenSettings}

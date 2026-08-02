@@ -3,157 +3,179 @@ const { normalizeOwner, calculateEstimateMinutes } = require("../utils/retroActi
 const { normalizeDedupKey } = require("../utils/retroDedup.ts");
 
 function runRetroMigrations(db) {
-  const currentVersion = db.pragma("user_version", { simple: true });
-  if (currentVersion >= 2) {
-    return;
-  }
-
-  const migrate = db.transaction(() => {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS sprint_snapshots (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        start_date TEXT,
-        end_date TEXT,
-        committed_points INTEGER NOT NULL DEFAULT 0,
-        completed_points INTEGER NOT NULL DEFAULT 0,
-        total_issues INTEGER NOT NULL DEFAULT 0,
-        completed_issues INTEGER NOT NULL DEFAULT 0,
-        blocked_issues INTEGER NOT NULL DEFAULT 0,
-        burndown_trend TEXT NOT NULL DEFAULT 'on_track',
-        velocity INTEGER NOT NULL DEFAULT 0,
-        blockers TEXT DEFAULT '',
-        is_user_edited INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS retrospectives (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        sprint_id TEXT NOT NULL REFERENCES sprint_snapshots(id),
-        transcript TEXT NOT NULL,
-        source_kind TEXT NOT NULL DEFAULT 'text',
-        audio_path TEXT,
-        processing_state TEXT NOT NULL DEFAULT 'idle',
-        analysis_run_count INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS retro_proposals (
-        id TEXT PRIMARY KEY,
-        retrospective_id TEXT NOT NULL REFERENCES retrospectives(id) ON DELETE CASCADE,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
-        basis TEXT,
-        source TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'pending',
-        dedup_key TEXT NOT NULL,
-        analysis_run INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS retro_tracked_actions (
-        id TEXT PRIMARY KEY,
-        proposal_id TEXT REFERENCES retro_proposals(id) ON DELETE SET NULL,
-        retrospective_id TEXT REFERENCES retrospectives(id) ON DELETE CASCADE,
-        sprint_id TEXT NOT NULL REFERENCES sprint_snapshots(id),
-        title TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
-        original_title TEXT,
-        original_description TEXT,
-        source TEXT NOT NULL,
-        owner TEXT NOT NULL DEFAULT '',
-        owner_normalized TEXT NOT NULL DEFAULT '',
-        estimate_value REAL NOT NULL DEFAULT 0,
-        estimate_unit TEXT NOT NULL DEFAULT 'hours',
-        estimate_minutes REAL NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'open',
-        jira_key TEXT UNIQUE,
-        jira_creation_state TEXT,
-        jira_payload_snapshot TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS mock_jira_counter (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        counter INTEGER NOT NULL DEFAULT 1000
-      )
-    `);
-
-    db.exec(`INSERT OR IGNORE INTO mock_jira_counter (id, counter) VALUES (1, 1000)`);
-
-    // Seed initial mock sprints if table empty
-    const count = db.prepare("SELECT COUNT(*) as c FROM sprint_snapshots").get();
-    if (count.c === 0) {
-      const stmt = db.prepare(`
-        INSERT INTO sprint_snapshots (
-          id, name, start_date, end_date, committed_points, completed_points,
-          total_issues, completed_issues, blocked_issues, burndown_trend, velocity, blockers
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  let currentVersion = db.pragma("user_version", { simple: true });
+  if (currentVersion < 2) {
+    const migrateV2 = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sprint_snapshots (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          start_date TEXT,
+          end_date TEXT,
+          committed_points INTEGER NOT NULL DEFAULT 0,
+          completed_points INTEGER NOT NULL DEFAULT 0,
+          total_issues INTEGER NOT NULL DEFAULT 0,
+          completed_issues INTEGER NOT NULL DEFAULT 0,
+          blocked_issues INTEGER NOT NULL DEFAULT 0,
+          burndown_trend TEXT NOT NULL DEFAULT 'on_track',
+          velocity INTEGER NOT NULL DEFAULT 0,
+          blockers TEXT DEFAULT '',
+          is_user_edited INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
       `);
 
-      stmt.run(
-        "sprint-24",
-        "Sprint 24 — Payments",
-        "2026-07-08",
-        "2026-07-19",
-        40,
-        29,
-        14,
-        10,
-        3,
-        "behind trend",
-        32,
-        "PR review delays on API gateway, Auth service deployment lock"
-      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS retrospectives (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          sprint_id TEXT NOT NULL REFERENCES sprint_snapshots(id),
+          transcript TEXT NOT NULL,
+          source_kind TEXT NOT NULL DEFAULT 'text',
+          audio_path TEXT,
+          meeting_owner TEXT,
+          processing_state TEXT NOT NULL DEFAULT 'idle',
+          analysis_run_count INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-      stmt.run(
-        "sprint-23",
-        "Sprint 23 — Payments",
-        "2026-06-24",
-        "2026-07-05",
-        38,
-        35,
-        12,
-        11,
-        1,
-        "on trend",
-        35,
-        "Staging database migration"
-      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS retro_proposals (
+          id TEXT PRIMARY KEY,
+          retrospective_id TEXT NOT NULL REFERENCES retrospectives(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          basis TEXT,
+          source TEXT NOT NULL,
+          state TEXT NOT NULL DEFAULT 'pending',
+          dedup_key TEXT NOT NULL,
+          analysis_run INTEGER NOT NULL DEFAULT 1,
+          suggested_owner TEXT,
+          suggested_estimate_value REAL,
+          suggested_estimate_unit TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-      stmt.run(
-        "sprint-22",
-        "Sprint 22 — Checkout",
-        "2026-06-10",
-        "2026-06-21",
-        36,
-        36,
-        10,
-        10,
-        0,
-        "ahead of trend",
-        36,
-        ""
-      );
-    }
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS retro_tracked_actions (
+          id TEXT PRIMARY KEY,
+          proposal_id TEXT REFERENCES retro_proposals(id) ON DELETE SET NULL,
+          retrospective_id TEXT REFERENCES retrospectives(id) ON DELETE CASCADE,
+          sprint_id TEXT NOT NULL REFERENCES sprint_snapshots(id),
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          original_title TEXT,
+          original_description TEXT,
+          source TEXT NOT NULL,
+          owner TEXT NOT NULL DEFAULT '',
+          owner_normalized TEXT NOT NULL DEFAULT '',
+          estimate_value REAL NOT NULL DEFAULT 0,
+          estimate_unit TEXT NOT NULL DEFAULT 'hours',
+          estimate_minutes REAL NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'open',
+          jira_key TEXT UNIQUE,
+          jira_creation_state TEXT,
+          jira_payload_snapshot TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-    db.pragma("user_version = 2");
-  });
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mock_jira_counter (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          counter INTEGER NOT NULL DEFAULT 1000
+        )
+      `);
 
-  migrate();
+      db.exec(`INSERT OR IGNORE INTO mock_jira_counter (id, counter) VALUES (1, 1000)`);
+
+      // Seed initial mock sprints if table empty
+      const count = db.prepare("SELECT COUNT(*) as c FROM sprint_snapshots").get();
+      if (count.c === 0) {
+        const stmt = db.prepare(`
+          INSERT INTO sprint_snapshots (
+            id, name, start_date, end_date, committed_points, completed_points,
+            total_issues, completed_issues, blocked_issues, burndown_trend, velocity, blockers
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        stmt.run(
+          "sprint-24",
+          "Sprint 24 — Payments",
+          "2026-07-08",
+          "2026-07-19",
+          40,
+          29,
+          14,
+          10,
+          3,
+          "behind trend",
+          32,
+          "PR review delays on API gateway, Auth service deployment lock"
+        );
+
+        stmt.run(
+          "sprint-23",
+          "Sprint 23 — Payments",
+          "2026-06-24",
+          "2026-07-05",
+          38,
+          35,
+          12,
+          11,
+          1,
+          "on trend",
+          35,
+          "Staging database migration"
+        );
+
+        stmt.run(
+          "sprint-22",
+          "Sprint 22 — Checkout",
+          "2026-06-10",
+          "2026-06-21",
+          36,
+          36,
+          10,
+          10,
+          0,
+          "ahead of trend",
+          36,
+          ""
+        );
+      }
+
+      db.pragma("user_version = 2");
+    });
+    migrateV2();
+    currentVersion = 2;
+  }
+
+  if (currentVersion < 3) {
+    const migrateV3 = db.transaction(() => {
+      try {
+        db.exec(`ALTER TABLE retrospectives ADD COLUMN meeting_owner TEXT;`);
+      } catch (_) {}
+      try {
+        db.exec(`ALTER TABLE retro_proposals ADD COLUMN suggested_owner TEXT;`);
+      } catch (_) {}
+      try {
+        db.exec(`ALTER TABLE retro_proposals ADD COLUMN suggested_estimate_value REAL;`);
+      } catch (_) {}
+      try {
+        db.exec(`ALTER TABLE retro_proposals ADD COLUMN suggested_estimate_unit TEXT;`);
+      } catch (_) {}
+
+      db.pragma("user_version = 3");
+    });
+    migrateV3();
+  }
 }
 
 class RetroRepository {
@@ -218,16 +240,16 @@ class RetroRepository {
     return this.getSprintSnapshot(sprintId);
   }
 
-  async createRetrospective({ sprintId, title, transcript, sourceKind, audioPath }) {
+  async createRetrospective({ sprintId, title, transcript, sourceKind, audioPath, meetingOwner }) {
     const id = randomUUID();
     const retroTitle = title || `Retrospective — ${new Date().toLocaleDateString()}`;
 
     this.db
       .prepare(`
-        INSERT INTO retrospectives (id, title, sprint_id, transcript, source_kind, audio_path, processing_state)
-        VALUES (?, ?, ?, ?, ?, ?, 'idle')
+        INSERT INTO retrospectives (id, title, sprint_id, transcript, source_kind, audio_path, meeting_owner, processing_state)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'idle')
       `)
-      .run(id, retroTitle, sprintId, transcript || "", sourceKind || "text", audioPath || null);
+      .run(id, retroTitle, sprintId, transcript || "", sourceKind || "text", audioPath || null, meetingOwner || null);
 
     return this.getRetrospective(id);
   }
@@ -268,6 +290,10 @@ class RetroRepository {
       fields.push("audio_path = ?");
       values.push(data.audio_path);
     }
+    if (data.meeting_owner !== undefined) {
+      fields.push("meeting_owner = ?");
+      values.push(data.meeting_owner);
+    }
 
     if (fields.length > 0) {
       fields.push("updated_at = datetime('now')");
@@ -291,14 +317,20 @@ class RetroRepository {
         .run(retrospectiveId);
 
       const insertStmt = this.db.prepare(`
-        INSERT INTO retro_proposals (id, retrospective_id, title, description, basis, source, state, dedup_key, analysis_run)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        INSERT INTO retro_proposals (
+          id, retrospective_id, title, description, basis, source, state, dedup_key, analysis_run,
+          suggested_owner, suggested_estimate_value, suggested_estimate_unit
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
       `);
 
       const savedList = [];
       for (const p of proposals) {
         const id = randomUUID();
         const dedupKey = normalizeDedupKey(p.title);
+        const sugOwner = p.suggestedOwner || p.owner || null;
+        const sugEstVal = p.suggestedEstimateValue ?? p.estimateValue ?? null;
+        const sugEstUnit = p.suggestedEstimateUnit || p.estimateUnit || null;
+
         insertStmt.run(
           id,
           retrospectiveId,
@@ -307,7 +339,10 @@ class RetroRepository {
           p.basis || null,
           p.source || "explicit",
           dedupKey,
-          analysisRun
+          analysisRun,
+          sugOwner,
+          sugEstVal,
+          sugEstUnit
         );
         savedList.push({
           id,
@@ -319,6 +354,9 @@ class RetroRepository {
           state: "pending",
           dedup_key: dedupKey,
           analysis_run: analysisRun,
+          suggested_owner: sugOwner,
+          suggested_estimate_value: sugEstVal,
+          suggested_estimate_unit: sugEstUnit,
         });
       }
 
@@ -365,15 +403,35 @@ class RetroRepository {
       }
 
       const retro = this.db
-        .prepare("SELECT sprint_id FROM retrospectives WHERE id = ?")
+        .prepare("SELECT sprint_id, meeting_owner FROM retrospectives WHERE id = ?")
         .get(proposal.retrospective_id);
 
       const title = editedData.title || proposal.title;
       const description = editedData.description !== undefined ? editedData.description : proposal.description;
-      const owner = editedData.owner || "";
+
+      let owner = editedData.owner !== undefined && editedData.owner !== null && String(editedData.owner).trim() !== ""
+        ? String(editedData.owner).trim()
+        : (proposal.suggested_owner || "");
+
+      if (!owner && retro && retro.meeting_owner) {
+        owner = retro.meeting_owner;
+      }
+      if (!owner) {
+        owner = "Unassigned";
+      }
+
       const ownerNormalized = normalizeOwner(owner);
-      const estimateValue = Number(editedData.estimate_value) || 0;
-      const estimateUnit = editedData.estimate_unit || "hours";
+
+      let estimateValue = editedData.estimate_value !== undefined && editedData.estimate_value !== null
+        ? Number(editedData.estimate_value)
+        : (proposal.suggested_estimate_value !== null && proposal.suggested_estimate_value !== undefined
+          ? Number(proposal.suggested_estimate_value)
+          : 1);
+
+      let estimateUnit = editedData.estimate_unit || proposal.suggested_estimate_unit || "hours";
+      if (!["minutes", "hours", "days"].includes(estimateUnit)) {
+        estimateUnit = "hours";
+      }
       const estimateMinutes = calculateEstimateMinutes(estimateValue, estimateUnit);
 
       const actionId = randomUUID();

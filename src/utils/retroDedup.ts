@@ -15,6 +15,9 @@ export interface ProposalItem {
   description: string;
   basis?: string;
   source: "explicit" | "coach";
+  owner?: string;
+  estimateValue?: number;
+  estimateUnit?: string;
 }
 
 /**

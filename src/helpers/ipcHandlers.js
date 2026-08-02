@@ -637,12 +637,18 @@ class IPCHandlers {
       ? `SPRINT CONTEXT:\nSprint: ${sprint.name}\nCommitted: ${sprint.committed_points} pts | Completed: ${sprint.completed_points} pts | Velocity: ${sprint.velocity} pts\nIssues: ${sprint.completed_issues}/${sprint.total_issues} completed (${sprint.blocked_issues} blocked)\nBurndown Trend: ${sprint.burndown_trend}\nBlockers: ${sprint.blockers || "None"}\n`
       : "";
 
+    const meetingOwner = retro.meeting_owner || settings.meetingOwner || settings.uploaderIdentity || "";
+    const meetingOwnerText = meetingOwner ? `Default Meeting Owner / Uploader: "${meetingOwner}"\n` : "";
+
     const systemPrompt =
       `You are an expert Agile coach analyzing a retrospective transcript.\n` +
       sprintContext +
+      meetingOwnerText +
       `Extract explicitly stated action items and suggest agile-coach improvements.\n` +
+      `For every item, estimate effort ("estimateValue" as a number and "estimateUnit" as "minutes", "hours", or "days") and assign an "owner".\n` +
+      `Assign a transcript-supported owner if a specific participant is identified in the transcript; otherwise set "owner" to the default meeting owner: "${meetingOwner || "Unassigned"}". Do not invent named participants not mentioned in the transcript.\n` +
       `Return ONLY a JSON object with this exact schema (max 5 explicitActions and 5 coachSuggestions):\n` +
-      `{\n  "explicitActions": [{ "title": "...", "description": "..." }],\n  "coachSuggestions": [{ "title": "...", "description": "...", "basis": "..." }]\n}\n` +
+      `{\n  "explicitActions": [{ "title": "...", "description": "...", "owner": "...", "estimateValue": 1, "estimateUnit": "hours" }],\n  "coachSuggestions": [{ "title": "...", "description": "...", "basis": "...", "owner": "...", "estimateValue": 1, "estimateUnit": "hours" }]\n}\n` +
       `Do not include any prose, commentary, or markdown formatting outside JSON.`;
 
     for (let i = 0; i < chunks.length; i++) {
@@ -695,10 +701,25 @@ class IPCHandlers {
 
       if (!parsed.unparsed) {
         for (const item of parsed.explicitActions) {
-          rawParsedItems.push({ title: item.title, description: item.description, source: "explicit" });
+          rawParsedItems.push({
+            title: item.title,
+            description: item.description,
+            owner: item.owner || meetingOwner,
+            estimateValue: item.estimateValue,
+            estimateUnit: item.estimateUnit,
+            source: "explicit",
+          });
         }
         for (const item of parsed.coachSuggestions) {
-          rawParsedItems.push({ title: item.title, description: item.description, basis: item.basis, source: "coach" });
+          rawParsedItems.push({
+            title: item.title,
+            description: item.description,
+            basis: item.basis,
+            owner: item.owner || meetingOwner,
+            estimateValue: item.estimateValue,
+            estimateUnit: item.estimateUnit,
+            source: "coach",
+          });
         }
       }
     }

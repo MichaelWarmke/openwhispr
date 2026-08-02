@@ -69,3 +69,27 @@ test("parseRetroResponse - wholly unparseable input", () => {
   assert.equal(res.explicitActions.length, 0);
   assert.equal(res.coachSuggestions.length, 0);
 });
+
+test("parseRetroResponse - owner and estimate fields normalization", () => {
+  const input = JSON.stringify({
+    explicitActions: [
+      { title: "Task 1", description: "Desc 1", owner: "  Jordan  ", estimateValue: 3, estimateUnit: "hours" },
+      { title: "Task 2", description: "Desc 2", owner: "Taylor", estimate_value: "45", estimate_unit: "minutes" },
+    ],
+    coachSuggestions: [
+      { title: "Coach 1", description: "Desc 3", basis: "Velocity", estimateUnit: "invalid_unit" },
+    ],
+  });
+
+  const res = parseRetroResponse(input);
+  assert.equal(res.unparsed, undefined);
+  assert.equal(res.explicitActions[0].owner, "Jordan");
+  assert.equal(res.explicitActions[0].estimateValue, 3);
+  assert.equal(res.explicitActions[0].estimateUnit, "hours");
+
+  assert.equal(res.explicitActions[1].owner, "Taylor");
+  assert.equal(res.explicitActions[1].estimateValue, 45);
+  assert.equal(res.explicitActions[1].estimateUnit, "minutes");
+
+  assert.equal(res.coachSuggestions[0].estimateUnit, "hours");
+});

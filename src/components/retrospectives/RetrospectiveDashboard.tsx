@@ -17,6 +17,11 @@ import {
   AlertTriangle,
   X,
   Layers,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Calendar,
+  Edit3,
 } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -33,6 +38,11 @@ export default function RetrospectiveDashboard({ sprints }: RetrospectiveDashboa
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [sprintFilter, setSprintFilter] = useState<string>("all");
+
+  // Open sprint accordions state: current sprint (sprints[0]?.id) open by default
+  const [expandedSprintIds, setExpandedSprintIds] = useState<Set<string>>(
+    () => new Set([sprints[0]?.id || "sprint-24", "carried-over"])
+  );
 
   // Manual Add Modal state
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -77,12 +87,33 @@ export default function RetrospectiveDashboard({ sprints }: RetrospectiveDashboa
     fetchDashboardData();
   }, [statusFilter, ownerFilter, sprintFilter]);
 
+  const toggleSprintAccordion = (sprintId: string) => {
+    setExpandedSprintIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sprintId)) {
+        next.delete(sprintId);
+      } else {
+        next.add(sprintId);
+      }
+      return next;
+    });
+  };
+
   const sprintOrdering = [...sprints].sort((a, b) => (a.start_date > b.start_date ? 1 : -1)).map((s) => s.id);
   const currentSprintId = sprints[0]?.id || "sprint-24";
   const carriedOverActions = getCarriedOverActions(actions, currentSprintId, sprintOrdering);
 
   const openCount = actions.filter((a) => a.status === "open").length;
   const completedCount = actions.filter((a) => a.status === "completed").length;
+
+  const handleUpdateTitleDescription = async (id: string, title: string, description: string) => {
+    try {
+      await retroClient.updateAction(id, { title, description });
+      fetchDashboardData();
+    } catch (err) {
+      console.error("Failed to update action title/description", err);
+    }
+  };
 
   const handleUpdateStatus = async (id: string, newStatus: "open" | "completed") => {
     try {
@@ -173,6 +204,11 @@ export default function RetrospectiveDashboard({ sprints }: RetrospectiveDashboa
       return false;
     }
   };
+
+  const sortedSprints = [...sprints];
+  const filteredSprints = sprintFilter === "all"
+    ? sortedSprints
+    : sortedSprints.filter((s) => s.id === sprintFilter);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto p-6">
@@ -266,35 +302,52 @@ export default function RetrospectiveDashboard({ sprints }: RetrospectiveDashboa
         </Button>
       </div>
 
-      {/* Carried Over Group */}
+      {/* Carried Over Accordion Group */}
       {carriedOverActions.length > 0 && (
-        <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-          <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
-            <AlertTriangle size={15} />
-            <span>Carried over from previous sprints ({carriedOverActions.length})</span>
-          </div>
-          <div className="grid gap-3">
-            {carriedOverActions.map((action) => (
-              <ActionCard
-                key={action.id}
-                action={action}
-                sprints={sprints}
-                activeMenuId={activeMenuId}
-                setActiveMenuId={setActiveMenuId}
-                onUpdateStatus={handleUpdateStatus}
-                onUpdateOwner={handleUpdateOwner}
-                onUpdateEstimate={handleUpdateEstimate}
-                onDelete={handleDeleteAction}
-                onOpenJira={handleOpenJiraModal}
-                onOpenProvenance={setProvenanceAction}
-                isStale={isJiraStale(action)}
-              />
-            ))}
-          </div>
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden shadow-sm">
+          <button
+            onClick={() => toggleSprintAccordion("carried-over")}
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-amber-500/10 transition-colors"
+          >
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+              {expandedSprintIds.has("carried-over") ? (
+                <ChevronDown size={16} />
+              ) : (
+                <ChevronRight size={16} />
+              )}
+              <AlertTriangle size={15} />
+              <span>Carried over from previous sprints</span>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+              {carriedOverActions.length} open {carriedOverActions.length === 1 ? "item" : "items"}
+            </span>
+          </button>
+
+          {expandedSprintIds.has("carried-over") && (
+            <div className="p-4 pt-0 space-y-3 border-t border-amber-500/20">
+              {carriedOverActions.map((action) => (
+                <ActionCard
+                  key={action.id}
+                  action={action}
+                  sprints={sprints}
+                  activeMenuId={activeMenuId}
+                  setActiveMenuId={setActiveMenuId}
+                  onUpdateStatus={handleUpdateStatus}
+                  onUpdateTitleDescription={handleUpdateTitleDescription}
+                  onUpdateOwner={handleUpdateOwner}
+                  onUpdateEstimate={handleUpdateEstimate}
+                  onDelete={handleDeleteAction}
+                  onOpenJira={handleOpenJiraModal}
+                  onOpenProvenance={setProvenanceAction}
+                  isStale={isJiraStale(action)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Main Tracked Actions List */}
+      {/* Sprint Accordion List */}
       <div className="space-y-4">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
@@ -309,24 +362,90 @@ export default function RetrospectiveDashboard({ sprints }: RetrospectiveDashboa
             </p>
           </div>
         ) : (
-          <div className="grid gap-3">
-            {actions.map((action) => (
-              <ActionCard
-                key={action.id}
-                action={action}
-                sprints={sprints}
-                activeMenuId={activeMenuId}
-                setActiveMenuId={setActiveMenuId}
-                onUpdateStatus={handleUpdateStatus}
-                onUpdateOwner={handleUpdateOwner}
-                onUpdateEstimate={handleUpdateEstimate}
-                onDelete={handleDeleteAction}
-                onOpenJira={handleOpenJiraModal}
-                onOpenProvenance={setProvenanceAction}
-                isStale={isJiraStale(action)}
-              />
-            ))}
-          </div>
+          filteredSprints.map((sprint) => {
+            const sprintActions = actions.filter((a) => a.sprint_id === sprint.id);
+            const isExpanded = expandedSprintIds.has(sprint.id);
+            const isCurrentSprint = sprint.id === currentSprintId;
+            const openInSprint = sprintActions.filter((a) => a.status === "open").length;
+            const completedInSprint = sprintActions.filter((a) => a.status === "completed").length;
+
+            return (
+              <div
+                key={sprint.id}
+                className="rounded-xl border border-border/60 bg-card overflow-hidden shadow-sm transition-all"
+              >
+                {/* Sprint Accordion Header */}
+                <button
+                  onClick={() => toggleSprintAccordion(sprint.id)}
+                  className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-1/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="text-muted-foreground">
+                      {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-foreground">{sprint.name}</h3>
+                        {isCurrentSprint && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary">
+                            Current Sprint
+                          </span>
+                        )}
+                      </div>
+                      {sprint.start_date && (
+                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
+                          <Calendar size={12} />
+                          <span>
+                            {sprint.start_date} — {sprint.end_date || "Present"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2.5 py-1 rounded-md bg-surface-1 font-semibold text-muted-foreground">
+                      {sprintActions.length} {sprintActions.length === 1 ? "action" : "actions"} (
+                      <span className="text-primary">{openInSprint} open</span>,{" "}
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {completedInSprint} done
+                      </span>
+                      )
+                    </span>
+                  </div>
+                </button>
+
+                {/* Sprint Accordion Body */}
+                {isExpanded && (
+                  <div className="p-4 pt-2 border-t border-border/30 space-y-3 bg-surface-1/20">
+                    {sprintActions.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic py-3 text-center">
+                        No action items recorded for this sprint.
+                      </p>
+                    ) : (
+                      sprintActions.map((action) => (
+                        <ActionCard
+                          key={action.id}
+                          action={action}
+                          sprints={sprints}
+                          activeMenuId={activeMenuId}
+                          setActiveMenuId={setActiveMenuId}
+                          onUpdateStatus={handleUpdateStatus}
+                          onUpdateTitleDescription={handleUpdateTitleDescription}
+                          onUpdateOwner={handleUpdateOwner}
+                          onUpdateEstimate={handleUpdateEstimate}
+                          onDelete={handleDeleteAction}
+                          onOpenJira={handleOpenJiraModal}
+                          onOpenProvenance={setProvenanceAction}
+                          isStale={isJiraStale(action)}
+                        />
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -549,6 +668,7 @@ interface ActionCardProps {
   activeMenuId: string | null;
   setActiveMenuId: (id: string | null) => void;
   onUpdateStatus: (id: string, status: "open" | "completed") => void;
+  onUpdateTitleDescription: (id: string, title: string, description: string) => void;
   onUpdateOwner: (id: string, owner: string) => void;
   onUpdateEstimate: (id: string, val: number, unit: string) => void;
   onDelete: (id: string) => void;
@@ -563,6 +683,7 @@ function ActionCard({
   activeMenuId,
   setActiveMenuId,
   onUpdateStatus,
+  onUpdateTitleDescription,
   onUpdateOwner,
   onUpdateEstimate,
   onDelete,
@@ -570,22 +691,85 @@ function ActionCard({
   onOpenProvenance,
   isStale,
 }: ActionCardProps) {
-  const sprintName = sprints.find((s) => s.id === action.sprint_id)?.name || action.sprint_id;
   const isMenuOpen = activeMenuId === action.id;
+
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
+
+  const [titleDraft, setTitleDraft] = useState<string>(action.title);
+  const [descriptionDraft, setDescriptionDraft] = useState<string>(action.description || "");
+
+  useEffect(() => {
+    setTitleDraft(action.title);
+    setDescriptionDraft(action.description || "");
+  }, [action.title, action.description]);
+
+  const commitTitle = () => {
+    setIsEditingTitle(false);
+    const trimmedTitle = titleDraft.trim();
+    if (!trimmedTitle) {
+      setTitleDraft(action.title);
+      return;
+    }
+    if (trimmedTitle !== action.title) {
+      onUpdateTitleDescription(action.id, trimmedTitle, descriptionDraft);
+    }
+  };
+
+  const commitDesc = () => {
+    setIsEditingDesc(false);
+    if (descriptionDraft !== (action.description || "")) {
+      onUpdateTitleDescription(action.id, titleDraft.trim() || action.title, descriptionDraft);
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitTitle();
+    } else if (e.key === "Escape") {
+      setTitleDraft(action.title);
+      setIsEditingTitle(false);
+    }
+  };
+
+  const handleDescKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape") {
+      setDescriptionDraft(action.description || "");
+      setIsEditingDesc(false);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3 shadow-sm hover:border-border transition-colors relative">
       <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h4
-              className={`text-sm font-semibold ${
-                action.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"
-              }`}
-            >
-              {action.title}
-            </h4>
-            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-surface-1 text-muted-foreground">
+        <div className="space-y-1 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {isEditingTitle ? (
+              <input
+                type="text"
+                autoFocus
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={handleTitleKeyDown}
+                className="text-sm font-semibold text-foreground bg-surface-1 border border-primary px-2 py-0.5 rounded focus:outline-none flex-1 min-w-[200px]"
+              />
+            ) : (
+              <h4
+                onClick={() => setIsEditingTitle(true)}
+                title="Click to edit title"
+                className={`text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-1.5 ${
+                  action.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"
+                }`}
+              >
+                <span>{action.title}</span>
+                <Edit3 size={12} className="opacity-0 hover:opacity-100 transition-opacity text-muted-foreground" />
+              </h4>
+            )}
+
+            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-surface-1 text-muted-foreground shrink-0">
               {action.source === "explicit"
                 ? "Explicit action"
                 : action.source === "coach"
@@ -593,17 +777,72 @@ function ActionCard({
                 : "Manual action"}
             </span>
           </div>
-          {action.description && (
-            <p className="text-xs text-muted-foreground">{action.description}</p>
-          )}
-          <div className="text-[11px] text-muted-foreground">{sprintName}</div>
+
+          {/* Description Accordion Section */}
+          <div className="pt-1">
+            {isEditingDesc ? (
+              <div className="space-y-1.5">
+                <textarea
+                  autoFocus
+                  value={descriptionDraft}
+                  onChange={(e) => setDescriptionDraft(e.target.value)}
+                  onBlur={commitDesc}
+                  onKeyDown={handleDescKeyDown}
+                  placeholder="Add action description..."
+                  rows={Math.max(2, (descriptionDraft.match(/\n/g) || []).length + 1)}
+                  className="w-full text-xs text-foreground bg-surface-1 border border-primary p-2.5 rounded-lg focus:outline-none leading-relaxed resize-none"
+                />
+                <div className="flex justify-end text-[10px] text-muted-foreground">
+                  Press Escape to cancel · Click outside to save
+                </div>
+              </div>
+            ) : action.description ? (
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setIsDescExpanded(!isDescExpanded)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+                >
+                  {isDescExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  <span>{isDescExpanded ? "Hide Details" : "View Details"}</span>
+                </button>
+
+                {isDescExpanded && (
+                  <div className="relative group bg-surface-1/40 border border-border/40 p-3 rounded-lg">
+                    <p
+                      onClick={() => setIsEditingDesc(true)}
+                      title="Click to edit description"
+                      className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap cursor-pointer"
+                    >
+                      {action.description}
+                    </p>
+                    <button
+                      onClick={() => setIsEditingDesc(true)}
+                      className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Edit3 size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setIsDescExpanded(true);
+                  setIsEditingDesc(true);
+                }}
+                className="text-xs text-muted-foreground/70 hover:text-foreground italic flex items-center gap-1 transition-colors"
+              >
+                <Plus size={12} /> Add description...
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <select
             value={action.status}
             onChange={(e) => onUpdateStatus(action.id, e.target.value as "open" | "completed")}
-            className={`h-7 px-2 rounded text-xs font-semibold focus:outline-none ${
+            className={`h-7 px-2 rounded text-xs font-semibold focus:outline-none cursor-pointer ${
               action.status === "completed"
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                 : "bg-surface-1 text-foreground border border-border/60"
@@ -644,7 +883,7 @@ function ActionCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-1 border-t border-border/30">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2 border-t border-border/30">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Owner:</span>

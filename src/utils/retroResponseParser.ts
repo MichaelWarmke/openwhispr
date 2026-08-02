@@ -3,12 +3,18 @@ import { stripThinkingTags } from "../helpers/stripThinking.js";
 export interface ExplicitActionProposal {
   title: string;
   description: string;
+  owner?: string;
+  estimateValue?: number;
+  estimateUnit?: string;
 }
 
 export interface CoachSuggestionProposal {
   title: string;
   description: string;
   basis: string;
+  owner?: string;
+  estimateValue?: number;
+  estimateUnit?: string;
 }
 
 export interface RetroParsedOutput {
@@ -153,8 +159,22 @@ export function normalizeRetroOutput(obj: any): RetroParsedOutput {
     } else if (item && typeof item === "object") {
       const title = String(item.title || item.action || item.name || "").trim().slice(0, 150);
       const description = String(item.description || item.detail || item.details || "").trim();
+      const owner = item.owner ? String(item.owner).trim() : undefined;
+      const rawEstVal = item.estimateValue ?? item.estimate_value;
+      const estimateValue = typeof rawEstVal === "number" && !isNaN(rawEstVal) ? rawEstVal : (typeof rawEstVal === "string" && !isNaN(Number(rawEstVal)) ? Number(rawEstVal) : undefined);
+      let estimateUnit = item.estimateUnit || item.estimate_unit;
+      if (estimateUnit && !["minutes", "hours", "days"].includes(String(estimateUnit))) {
+        estimateUnit = "hours";
+      }
+
       if (title) {
-        result.explicitActions.push({ title, description });
+        result.explicitActions.push({
+          title,
+          description,
+          ...(owner ? { owner } : {}),
+          ...(estimateValue !== undefined ? { estimateValue } : {}),
+          ...(estimateUnit ? { estimateUnit } : {}),
+        });
       }
     }
   }
@@ -170,8 +190,23 @@ export function normalizeRetroOutput(obj: any): RetroParsedOutput {
       const title = String(item.title || item.suggestion || item.name || "").trim().slice(0, 150);
       const description = String(item.description || item.detail || item.details || "").trim();
       const basis = String(item.basis || item.reason || item.rationale || "").trim();
+      const owner = item.owner ? String(item.owner).trim() : undefined;
+      const rawEstVal = item.estimateValue ?? item.estimate_value;
+      const estimateValue = typeof rawEstVal === "number" && !isNaN(rawEstVal) ? rawEstVal : (typeof rawEstVal === "string" && !isNaN(Number(rawEstVal)) ? Number(rawEstVal) : undefined);
+      let estimateUnit = item.estimateUnit || item.estimate_unit;
+      if (estimateUnit && !["minutes", "hours", "days"].includes(String(estimateUnit))) {
+        estimateUnit = "hours";
+      }
+
       if (title) {
-        result.coachSuggestions.push({ title, description, basis });
+        result.coachSuggestions.push({
+          title,
+          description,
+          basis,
+          ...(owner ? { owner } : {}),
+          ...(estimateValue !== undefined ? { estimateValue } : {}),
+          ...(estimateUnit ? { estimateUnit } : {}),
+        });
       }
     }
   }
@@ -218,7 +253,7 @@ export function parseRetroResponse(rawOutput: string): RetroParsedOutput {
 export function buildRepairPrompt(invalidOutput: string): string {
   return (
     "The previous response was not valid JSON. Return ONLY a valid JSON object matching this exact schema:\n" +
-    '{\n  "explicitActions": [{ "title": "...", "description": "..." }],\n  "coachSuggestions": [{ "title": "...", "description": "...", "basis": "..." }]\n}\n' +
+    '{\n  "explicitActions": [{ "title": "...", "description": "...", "owner": "...", "estimateValue": 1, "estimateUnit": "hours" }],\n  "coachSuggestions": [{ "title": "...", "description": "...", "basis": "...", "owner": "...", "estimateValue": 1, "estimateUnit": "hours" }]\n}\n' +
     "No markdown fences, no explanatory text. Fix and format this output:\n" +
     invalidOutput.slice(0, 1000)
   );

@@ -23,6 +23,7 @@ import { useSettingsStore } from "../../stores/settingsStore";
 
 interface RetrospectiveIntakeProps {
   sprints: SprintSnapshot[];
+  uploaderIdentity?: string;
   onSprintUpdate: () => void;
   onAnalysisSuccess: (retroId: string) => void;
   onOpenSettings: () => void;
@@ -30,6 +31,7 @@ interface RetrospectiveIntakeProps {
 
 export default function RetrospectiveIntake({
   sprints,
+  uploaderIdentity,
   onSprintUpdate,
   onAnalysisSuccess,
   onOpenSettings,
@@ -166,6 +168,7 @@ export default function RetrospectiveIntake({
         transcript: transcriptText,
         sourceKind: sourceKind,
         audioPath: audioSourcePath || undefined,
+        meetingOwner: uploaderIdentity || undefined,
       });
 
       setCurrentRetroId(retro.id);
