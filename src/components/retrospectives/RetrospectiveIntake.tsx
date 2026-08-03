@@ -20,6 +20,7 @@ import {
 import { Button } from "../ui/button";
 
 import { useSettingsStore } from "../../stores/settingsStore";
+import { parseVttToTranscript } from "../../utils/vttParser";
 
 interface RetrospectiveIntakeProps {
   sprints: SprintSnapshot[];
@@ -150,11 +151,15 @@ export default function RetrospectiveIntake({
   };
 
   const handleFileUpload = (file: File) => {
-    if (file.name.endsWith(".txt")) {
+    const isTxt = file.name.toLowerCase().endsWith(".txt");
+    const isVtt = file.name.toLowerCase().endsWith(".vtt");
+
+    if (isTxt || isVtt) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target?.result as string;
-        setTranscriptText(text);
+        const cleanText = isVtt ? parseVttToTranscript(text) : text;
+        setTranscriptText(cleanText);
         setSourceKind("text");
         setAudioFileName(file.name);
       };
@@ -306,7 +311,11 @@ export default function RetrospectiveIntake({
                     {audioFileName}
                   </span>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
-                    {sourceKind === "audio" ? "Audio File" : "Text File"}
+                    {sourceKind === "audio"
+                      ? "Audio File"
+                      : audioFileName?.toLowerCase().endsWith(".vtt")
+                      ? "VTT Transcript"
+                      : "Text File"}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground truncate">
@@ -322,7 +331,7 @@ export default function RetrospectiveIntake({
                 </span>
                 <input
                   type="file"
-                  accept=".txt,audio/*"
+                  accept=".txt,.vtt,audio/*"
                   onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
                   className="hidden"
                 />
@@ -351,7 +360,7 @@ export default function RetrospectiveIntake({
           >
             <UploadCloud className="w-8 h-8 text-muted-foreground" />
             <div className="text-sm font-medium text-foreground">
-              Drop audio (.mp3, .wav, .m4a) or .txt transcript here
+              Drop audio (.mp3, .wav, .m4a) or transcript (.txt, .vtt) here
             </div>
             <p className="text-xs text-muted-foreground">
               Audio is transcribed locally. Transcript stays entirely on your machine.
@@ -363,7 +372,7 @@ export default function RetrospectiveIntake({
                 </span>
                 <input
                   type="file"
-                  accept=".txt,audio/*"
+                  accept=".txt,.vtt,audio/*"
                   onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
                   className="hidden"
                 />
