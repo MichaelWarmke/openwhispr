@@ -1,0 +1,30 @@
+🎙️ Sprint 24 Retrospective Transcript
+@Sarah (Scrum Master): Alright team, welcome to our Sprint 24 Retrospective! Today, we're reflecting on what went well, where we hit friction, and mapping out a few clear action items for Sprint 25. Let’s kick off with wins. Alex, do you want to start us off?
+
+@Alex (Lead Developer): Sure! On the backend side, shipping the new payment gateway integration went super smoothly. Zero downtime during deployment, and the refactored endpoints made a noticeable difference in response performance.
+
+@Maya (UI/UX Designer): Agreed! The initial user feedback on the updated checkout flow has been overwhelmingly positive. However, on the flip side, I felt like we had a major bottleneck mid-sprint regarding late design tweaks. I had to push mockup updates mid-implementation, which scrambled the frontend team's priorities.
+
+@Liam (Product Owner): I'll take the heat for that one, Maya. We received last-minute client feedback on the checkout call-to-action placement, and I rushed it into the active sprint. In hindsight, changing requirements three days before code freeze created unnecessary chaos.
+
+@Chen (QA Engineer): That definitely trickled down to testing. Because frontend components were updating until late Tuesday, QA only had 24 hours to execute our entire regression suite. It was a massive crunch, and we almost missed a critical authentication bug because of it.
+
+@Sarah (Scrum Master): Great candor, everyone. This brings us right into our key areas for improvement. I'm hearing two main pain points: late scope changes and a QA timeline crunch. How do we want to solve these?
+
+@Alex (Lead Developer): For the testing issue, if Chen and I set up automated integration tests for the API endpoints earlier in the sprint cycle, QA won't have to wait for the polished UI to start validating core logic.
+
+@Chen (QA Engineer): I love that. If we build API tests alongside backend development, I can run automated sanity checks early and focus manual testing strictly on UI edge cases at the end.
+
+@Sarah (Scrum Master): Excellent. Let's lock that in as our first action item.
+
+Action Item 1: @Alex and @Chen to set up automated API integration testing within the first week of Sprint 25.
+
+@Liam (Product Owner): As for the scope creep, I propose a hard rule: a design freeze 48 hours before the end of the sprint. Unless it’s a critical production blocker, any late design feedback automatically gets logged into the backlog for the following sprint.
+
+@Maya (UI/UX Designer): That would be a lifesaver. It gives me time to properly hand off assets and gives developers a stable spec to build against without moving target posts.
+
+@Sarah (Scrum Master): Perfect, let me document that as well.
+
+Action Item 2: @Liam and @Maya to enforce a mandatory 48-hour design freeze prior to sprint completion.
+
+@Sarah (Scrum Master): I’ll log both of these items in Jira so we can track them alongside our user stories. Thanks for the great insights today, everyone!

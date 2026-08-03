@@ -22,6 +22,7 @@ export interface Retrospective {
   source_kind: "audio" | "text" | "paste";
   audio_path: string | null;
   meeting_owner?: string | null;
+  pending_proposals_count?: number;
   processing_state: "idle" | "transcribing" | "analyzing" | "review" | "completed";
   analysis_run_count: number;
   created_at: string;
@@ -142,7 +143,7 @@ export const retroClient = {
   dismissProposal: (proposalId: string) => invoke<boolean>("proposals.dismiss", { proposalId }),
 
   // Tracked Actions operations
-  listActions: (filters?: { status?: string; owner?: string; sprintId?: string }) =>
+  listActions: (filters?: { status?: string; owner?: string; sprintId?: string; sprintIds?: string[] }) =>
     invoke<TrackedAction[]>("actions.list", filters),
   createManualAction: (data: {
     sprintId: string;

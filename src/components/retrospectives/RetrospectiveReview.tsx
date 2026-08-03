@@ -7,9 +7,7 @@ import {
 import {
   CheckCircle,
   XCircle,
-  Edit2,
   RefreshCcw,
-  Sparkles,
   Lightbulb,
   MessageSquare,
   AlertTriangle,
@@ -22,13 +20,14 @@ interface RetrospectiveReviewProps {
   retrospectiveId: string;
   sprint: SprintSnapshot | null;
   onGoToDashboard: () => void;
+  onActionAccepted: () => void;
   onReanalyze: () => void;
 }
 
 export default function RetrospectiveReview({
   retrospectiveId,
-  sprint,
   onGoToDashboard,
+  onActionAccepted,
   onReanalyze,
 }: RetrospectiveReviewProps) {
   const [proposals, setProposals] = useState<RetroProposal[]>([]);
@@ -57,6 +56,7 @@ export default function RetrospectiveReview({
     try {
       await retroClient.acceptProposal(id);
       await fetchProposals();
+      onActionAccepted();
     } catch (err) {
       console.error("Failed to accept proposal", err);
     }
@@ -75,27 +75,17 @@ export default function RetrospectiveReview({
   const coachProposals = proposals.filter((p) => p.source === "coach");
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-6">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Retrospective Proposal Review
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {sprint?.name || "Sprint"} · {proposals.length} pending proposals
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowReanalyzeConfirm(true)}
-            className="h-8 text-xs gap-1.5"
-          >
-            <RefreshCcw size={13} /> Re-analyze transcript
-          </Button>
-        </div>
+    <div className="space-y-6">
+      {/* Top Action Bar */}
+      <div className="flex items-center justify-end gap-2 border-b border-border/40 pb-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowReanalyzeConfirm(true)}
+          className="h-8 text-xs gap-1.5"
+        >
+          <RefreshCcw size={13} /> Re-analyze transcript
+        </Button>
       </div>
 
       {/* Proposals Content */}
@@ -111,30 +101,19 @@ export default function RetrospectiveReview({
             You have accepted or dismissed all proposals for this retrospective. Head to the Action Dashboard to manage tracked items.
           </p>
           <Button size="sm" onClick={onGoToDashboard} className="h-8 text-xs">
-            Go to Action Dashboard
+            Go to Dashboard
           </Button>
         </div>
       ) : (
         <div className="space-y-8">
           {/* Explicitly discussed section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-foreground">
-              <MessageSquare size={16} className="text-primary" />
-              <span>Explicitly discussed ({explicitProposals.length})</span>
-            </div>
-
-            {explicitProposals.length === 0 ? (
-              <div className="pl-6">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onGoToDashboard}
-                  className="h-8 text-xs gap-1.5"
-                >
-                  <CheckSquare size={13} /> Go to Action Dashboard
-                </Button>
+          {explicitProposals.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <MessageSquare size={16} className="text-primary" />
+                <span>Explicitly discussed ({explicitProposals.length})</span>
               </div>
-            ) : (
+
               <div className="grid gap-3">
                 {explicitProposals.map((p) => (
                   <div
@@ -177,21 +156,17 @@ export default function RetrospectiveReview({
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Agile coach suggestions section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-foreground">
-              <Lightbulb size={16} className="text-amber-500" />
-              <span>Agile-coach suggestions ({coachProposals.length})</span>
-            </div>
+          {coachProposals.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <Lightbulb size={16} className="text-amber-500" />
+                <span>Agile-coach suggestions ({coachProposals.length})</span>
+              </div>
 
-            {coachProposals.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic pl-6">
-                No coach suggestions generated for this chunk.
-              </p>
-            ) : (
               <div className="grid gap-3">
                 {coachProposals.map((p) => (
                   <div
@@ -236,8 +211,8 @@ export default function RetrospectiveReview({
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground italic">
             Suggestions are advisory and are never tracked without acceptance.

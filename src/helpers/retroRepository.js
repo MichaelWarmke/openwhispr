@@ -261,7 +261,12 @@ class RetroRepository {
 
   async listRetrospectives() {
     const rows = this.db
-      .prepare("SELECT * FROM retrospectives ORDER BY created_at DESC")
+      .prepare(`
+        SELECT r.*,
+          (SELECT COUNT(*) FROM retro_proposals p WHERE p.retrospective_id = r.id AND (p.state IS NULL OR p.state NOT IN ('accepted', 'dismissed', 'superseded'))) AS pending_proposals_count
+        FROM retrospectives r
+        ORDER BY r.created_at DESC
+      `)
       .all();
     return Promise.resolve(rows);
   }
@@ -378,7 +383,7 @@ class RetroRepository {
     const rows = this.db
       .prepare(`
         SELECT * FROM retro_proposals
-        WHERE retrospective_id = ? AND state = 'pending'
+        WHERE retrospective_id = ? AND (state IS NULL OR state NOT IN ('accepted', 'dismissed', 'superseded'))
         ORDER BY created_at ASC
       `)
       .all(retrospectiveId);
@@ -523,6 +528,14 @@ class RetroRepository {
     if (filters.sprintId) {
       query += " AND sprint_id = ?";
       params.push(filters.sprintId);
+    }
+    if (Array.isArray(filters.sprintIds)) {
+      if (filters.sprintIds.length === 0) {
+        return Promise.resolve([]);
+      }
+      const placeholders = filters.sprintIds.map(() => "?").join(", ");
+      query += ` AND sprint_id IN (${placeholders})`;
+      params.push(...filters.sprintIds);
     }
 
     query += " ORDER BY created_at DESC";

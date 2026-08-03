@@ -60,6 +60,29 @@ export default function RetrospectiveIntake({
   const [showEditSprintModal, setShowEditSprintModal] = useState<boolean>(false);
   const [editSprintData, setEditSprintData] = useState<Partial<SprintSnapshot>>({});
 
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      if (bottomRef.current) {
+        bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+        const scrollParent = bottomRef.current.closest(".overflow-y-auto");
+        if (scrollParent) {
+          scrollParent.scrollTo({
+            top: scrollParent.scrollHeight,
+            behavior: "smooth",
+          });
+        }
+      }
+    }, 100);
+  };
+
+  useEffect(() => {
+    if (isAnalyzing) {
+      scrollToBottom();
+    }
+  }, [isAnalyzing]);
+
   const selectedSprint = sprints.find((s) => s.id === selectedSprintId) || sprints[0];
 
   useEffect(() => {
@@ -200,14 +223,7 @@ export default function RetrospectiveIntake({
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold tracking-tight text-foreground">Retrospective Intake</h2>
-        <p className="text-sm text-muted-foreground">
-          Select a sprint and upload or paste your retrospective transcript for AI analysis.
-        </p>
-      </div>
+    <div className="space-y-6">
 
       {errorMessage && (
         <div className="p-3.5 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-sm flex items-center gap-2">
@@ -274,37 +290,83 @@ export default function RetrospectiveIntake({
         <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Transcript Source
         </label>
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleFileDrop}
-          className="border-2 border-dashed border-border/50 hover:border-primary/50 rounded-xl p-6 text-center bg-surface-1/20 transition-colors flex flex-col items-center justify-center gap-2"
-        >
-          <UploadCloud className="w-8 h-8 text-muted-foreground" />
-          <div className="text-sm font-medium text-foreground">
-            Drop audio (.mp3, .wav, .m4a) or .txt transcript here
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Audio is transcribed locally. Transcript stays entirely on your machine.
-          </p>
-          <div className="flex items-center gap-3 mt-2">
-            <label className="cursor-pointer">
-              <span className="inline-flex items-center justify-center h-8 px-3 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
-                Browse file
-              </span>
-              <input
-                type="file"
-                accept=".txt,audio/*"
-                onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                className="hidden"
-              />
-            </label>
-          </div>
-          {audioFileName && (
-            <div className="mt-2 text-xs text-primary font-medium flex items-center gap-1.5 bg-primary/10 px-2.5 py-1 rounded-md">
-              <CheckCircle2 size={13} /> Loaded: {audioFileName}
+        {audioFileName ? (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <FileText size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground truncate">
+                    {audioFileName}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                    {sourceKind === "audio" ? "Audio File" : "Text File"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate">
+                  Ready for retrospective analysis
+                </p>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="cursor-pointer">
+                <span className="inline-flex items-center justify-center h-7 px-2.5 rounded-md border border-border/60 bg-background text-foreground text-xs font-medium hover:bg-surface-1 transition-colors">
+                  Change
+                </span>
+                <input
+                  type="file"
+                  accept=".txt,audio/*"
+                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                  className="hidden"
+                />
+              </label>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                title="Remove file"
+                onClick={() => {
+                  setAudioFileName(null);
+                  setAudioSourcePath(null);
+                  setTranscriptText("");
+                  setSourceKind("paste");
+                }}
+              >
+                <X size={14} />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleFileDrop}
+            className="border-2 border-dashed border-border/50 hover:border-primary/50 rounded-xl p-6 text-center bg-surface-1/20 transition-colors flex flex-col items-center justify-center gap-2"
+          >
+            <UploadCloud className="w-8 h-8 text-muted-foreground" />
+            <div className="text-sm font-medium text-foreground">
+              Drop audio (.mp3, .wav, .m4a) or .txt transcript here
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Audio is transcribed locally. Transcript stays entirely on your machine.
+            </p>
+            <div className="flex items-center gap-3 mt-2">
+              <label className="cursor-pointer">
+                <span className="inline-flex items-center justify-center h-8 px-3 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
+                  Browse file
+                </span>
+                <input
+                  type="file"
+                  accept=".txt,audio/*"
+                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Transcript Textarea */}
@@ -350,71 +412,86 @@ export default function RetrospectiveIntake({
       )}
 
       {/* Model Info & Action Button */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-        <div className="text-xs text-muted-foreground flex items-center gap-2">
-          <Sparkles size={14} className="text-primary" />
-          <span>
-            Model:{" "}
-            <strong className="text-foreground font-medium">
-              {modelStatus?.modelId || "Qwen2.5 7B (local)"}
-            </strong>
-          </span>
-        </div>
-
+      <div className="space-y-3 pt-2">
         {!isAnalyzing ? (
-          <Button
-            onClick={handleStartAnalysis}
-            disabled={!modelStatus?.available || !transcriptText.trim()}
-            className="w-full sm:w-auto h-10 px-6 font-medium gap-2 shadow-sm"
-          >
-            <Sparkles size={16} /> Analyze retrospective
-          </Button>
-        ) : (
-          <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 text-primary animate-spin" />
-                <span className="text-sm font-semibold text-foreground">
-                  Analyzing retrospective…
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCancelAnalysis}
-                className="h-7 text-xs text-destructive hover:bg-destructive/10"
-              >
-                Cancel
-              </Button>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs text-muted-foreground flex items-center gap-2">
+              <Sparkles size={14} className="text-primary" />
+              <span>
+                Model:{" "}
+                <strong className="text-foreground font-medium">
+                  {modelStatus?.modelId || "Qwen2.5 7B (local)"}
+                </strong>
+              </span>
             </div>
-            {progressState && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>
-                    {progressState.stage === "parsing" ? "Repairing JSON schema..." : "Processing chunk"}
-                  </span>
-                  <span>
-                    Chunk {progressState.chunkIndex || 1} of {progressState.chunkCount || 1}
+
+            <Button
+              onClick={handleStartAnalysis}
+              disabled={!modelStatus?.available || !transcriptText.trim()}
+              className="w-full sm:w-auto h-10 px-6 font-medium gap-2 shadow-sm"
+            >
+              <Sparkles size={16} /> Analyze retrospective
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                  <span className="text-sm font-semibold text-foreground">
+                    Analyzing retrospective…
                   </span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-border/40 overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{
-                      width: `${Math.round(
-                        ((progressState.chunkIndex || 1) / (progressState.chunkCount || 1)) * 100
-                      )}%`,
-                    }}
-                  />
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancelAnalysis}
+                  className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                >
+                  Cancel
+                </Button>
               </div>
-            )}
-            <p className="text-xs text-muted-foreground italic">
-              Dictation cleanup is paused while this runs.
-            </p>
+              {progressState && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>
+                      {progressState.stage === "parsing" ? "Repairing JSON schema..." : "Processing chunk"}
+                    </span>
+                    <span>
+                      Chunk {progressState.chunkIndex || 1} of {progressState.chunkCount || 1}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-border/40 overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{
+                        width: `${Math.round(
+                          ((progressState.chunkIndex || 1) / (progressState.chunkCount || 1)) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground italic">
+                Dictation cleanup is paused while this runs.
+              </p>
+            </div>
+
+            <div className="text-xs text-muted-foreground flex items-center gap-2 px-1">
+              <Sparkles size={14} className="text-primary" />
+              <span>
+                Model:{" "}
+                <strong className="text-foreground font-medium">
+                  {modelStatus?.modelId || "Qwen2.5 7B (local)"}
+                </strong>
+              </span>
+            </div>
           </div>
         )}
       </div>
+      <div ref={bottomRef} />
 
       {/* Edit Sprint Metrics Modal */}
       {showEditSprintModal && (

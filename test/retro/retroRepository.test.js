@@ -234,3 +234,23 @@ test("Mock Jira ticket creation idempotency and key persistence", async (t) => {
   const ticket3 = await repo.createMockJiraTicket(manual2.id, "Update security docs", "Docs");
   assert.equal(ticket3.jira_key, "AGILE-1002");
 });
+
+test("listTrackedActions - filtering by sprintIds array", async (t) => {
+  const testEnv = createTestRepo(t);
+  if (!testEnv) return;
+  const { repo } = testEnv;
+
+  await repo.createManualAction({ sprintId: "sprint-24", title: "S24 Action" });
+  await repo.createManualAction({ sprintId: "sprint-23", title: "S23 Action" });
+  await repo.createManualAction({ sprintId: "sprint-22", title: "S22 Action" });
+
+  const only24and23 = await repo.listTrackedActions({ sprintIds: ["sprint-24", "sprint-23"] });
+  assert.equal(only24and23.length, 2);
+  const titles = only24and23.map((a) => a.title);
+  assert.ok(titles.includes("S24 Action"));
+  assert.ok(titles.includes("S23 Action"));
+  assert.ok(!titles.includes("S22 Action"));
+
+  const emptySprints = await repo.listTrackedActions({ sprintIds: [] });
+  assert.equal(emptySprints.length, 0);
+});

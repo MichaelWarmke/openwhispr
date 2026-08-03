@@ -8,120 +8,163 @@ import { useAuth } from "../../hooks/useAuth";
 import RetrospectiveIntake from "./RetrospectiveIntake";
 import RetrospectiveReview from "./RetrospectiveReview";
 import RetrospectiveDashboard from "./RetrospectiveDashboard";
-import { Sparkles, CheckSquare, FilePlus } from "lucide-react";
-import { cn } from "../lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../ui/dialog";
+import { Sparkles } from "lucide-react";
 
 interface RetrospectivesViewProps {
   onOpenSettings: () => void;
 }
 
-export type RetroStage = "intake" | "review" | "dashboard";
-
 export default function RetrospectivesView({ onOpenSettings }: RetrospectivesViewProps) {
   const { user } = useAuth();
   const uploaderIdentity = user?.name?.trim() || user?.email?.trim() || "";
 
-  const [stage, setStage] = useState<RetroStage>("intake");
   const [sprints, setSprints] = useState<SprintSnapshot[]>([]);
+  const [retros, setRetros] = useState<Retrospective[]>([]);
   const [currentRetroId, setCurrentRetroId] = useState<string | null>(null);
+  const [activeModal, setActiveModal] = useState<"none" | "intake" | "review">("none");
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchSprints = async () => {
+  const fetchData = async () => {
     try {
-      const list = await retroClient.listSprints();
-      setSprints(list);
+      const [sprintList, retroList] = await Promise.all([
+        retroClient.listSprints(),
+        retroClient.listRetros(),
+      ]);
+      setSprints(sprintList);
+      setRetros(retroList);
     } catch (err) {
-      console.error("Failed to list sprints", err);
+      console.error("Failed to load retrospectives data", err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSprints();
+    fetchData();
   }, []);
 
-  const handleAnalysisSuccess = (retroId: string) => {
+  // Derive eligible sprint IDs: all sprints + any retro sprint_id
+  const eligibleSprintIds = Array.from(
+    new Set([
+      ...sprints.map((s) => s.id),
+      ...retros.map((r) => r.sprint_id),
+    ])
+  );
+
+  // Derive sprint IDs with pending proposals
+  const pendingProposalSprintIds = Array.from(
+    new Set(
+      retros
+        .filter((r) => (r.pending_proposals_count ?? 0) > 0)
+        .map((r) => r.sprint_id)
+    )
+  );
+
+  const handleNewRetrospective = () => {
+    setCurrentRetroId(null);
+    setActiveModal("intake");
+  };
+
+  const handleAnalysisSuccess = async (retroId: string) => {
+    await fetchData();
     setCurrentRetroId(retroId);
-    setStage("review");
+    setActiveModal("review");
+  };
+
+  const handleActionAccepted = async () => {
+    await fetchData();
   };
 
   const handleReanalyze = () => {
-    setStage("intake");
+    setActiveModal("intake");
+  };
+
+  const handleReviewSprint = (sprintId: string) => {
+    const retroWithPending = retros.find(
+      (r) => r.sprint_id === sprintId && (r.pending_proposals_count ?? 0) > 0
+    );
+    const retro = retroWithPending || retros
+      .filter((r) => r.sprint_id === sprintId)
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+
+    if (retro) {
+      setCurrentRetroId(retro.id);
+      setActiveModal("review");
+    }
   };
 
   const currentSprint = sprints.find((s) => s.id === currentRetroId) || sprints[0] || null;
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-y-auto">
-      {/* View Stage Header Tabs */}
-      <div className="shrink-0 border-b border-border/40 bg-surface-1/30 px-6 py-2 flex items-center justify-between">
+      {/* Retrospective Header */}
+      <div className="shrink-0 border-b border-border/40 bg-surface-1/30 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-primary" />
           <span className="font-semibold text-sm text-foreground">Retrospective Analyst</span>
         </div>
-
-        <div className="flex items-center gap-1 bg-surface-1 p-1 rounded-lg border border-border/50">
-          <button
-            onClick={() => setStage("intake")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
-              stage === "intake"
-                ? "bg-background text-foreground shadow-sm font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <FilePlus size={13} /> Intake
-          </button>
-          <button
-            onClick={() => setStage("review")}
-            disabled={!currentRetroId}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
-              stage === "review"
-                ? "bg-background text-foreground shadow-sm font-semibold"
-                : "text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
-            )}
-          >
-            <Sparkles size={13} /> Proposal Review
-          </button>
-          <button
-            onClick={() => setStage("dashboard")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
-              stage === "dashboard"
-                ? "bg-background text-foreground shadow-sm font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <CheckSquare size={13} /> Action Dashboard
-          </button>
-        </div>
       </div>
 
-      {/* Stage Views */}
-      <div className="flex-1 py-4">
+      {/* Action Dashboard Landing View */}
+      <div className="flex-1">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
-        ) : stage === "intake" ? (
+        ) : (
+          <RetrospectiveDashboard
+            sprints={sprints}
+            retros={retros}
+            eligibleSprintIds={eligibleSprintIds}
+            pendingProposalSprintIds={pendingProposalSprintIds}
+            onNewRetrospective={handleNewRetrospective}
+            onReviewSprint={handleReviewSprint}
+            activeModal={activeModal}
+          />
+        )}
+      </div>
+
+      {/* Intake Modal Dialog */}
+      <Dialog open={activeModal === "intake"} onOpenChange={(open) => !open && setActiveModal("none")}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto p-6">
+          <DialogHeader>
+            <DialogTitle>New Retrospective</DialogTitle>
+            <DialogDescription>
+              Select a sprint and upload or paste your retrospective transcript for AI analysis.
+            </DialogDescription>
+          </DialogHeader>
           <RetrospectiveIntake
             sprints={sprints}
             uploaderIdentity={uploaderIdentity}
-            onSprintUpdate={fetchSprints}
+            onSprintUpdate={fetchData}
             onAnalysisSuccess={handleAnalysisSuccess}
             onOpenSettings={onOpenSettings}
           />
-        ) : stage === "review" && currentRetroId ? (
-          <RetrospectiveReview
-            retrospectiveId={currentRetroId}
-            sprint={currentSprint}
-            onGoToDashboard={() => setStage("dashboard")}
-            onReanalyze={handleReanalyze}
-          />
-        ) : (
-          <RetrospectiveDashboard sprints={sprints} />
-        )}
-      </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Actions Review Modal Dialog */}
+      <Dialog open={activeModal === "review" && !!currentRetroId} onOpenChange={(open) => !open && setActiveModal("none")}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto p-6">
+          <DialogHeader>
+            <DialogTitle>Actions Review</DialogTitle>
+          </DialogHeader>
+          {currentRetroId && (
+            <RetrospectiveReview
+              retrospectiveId={currentRetroId}
+              sprint={currentSprint}
+              onGoToDashboard={() => setActiveModal("none")}
+              onActionAccepted={handleActionAccepted}
+              onReanalyze={handleReanalyze}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
