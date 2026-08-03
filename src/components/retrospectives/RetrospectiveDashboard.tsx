@@ -238,12 +238,18 @@ export default function RetrospectiveDashboard({
   onReviewSprint,
   activeModal,
 }: RetrospectiveDashboardProps) {
-  const eligibleSprintSet = new Set(eligibleSprintIds);
-  const eligibleSprints = sprints.filter((s) => eligibleSprintSet.has(s.id));
-
   const [actions, setActions] = useState<TrackedAction[]>([]);
   const [owners, setOwners] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const eligibleSprints = React.useMemo(() => {
+    const set = new Set(eligibleSprintIds);
+    retros?.forEach((r) => set.add(r.sprint_id));
+    actions.forEach((a) => {
+      if (a.sprint_id) set.add(a.sprint_id);
+    });
+    return sprints.filter((s) => set.has(s.id));
+  }, [sprints, eligibleSprintIds, retros, actions]);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -254,6 +260,17 @@ export default function RetrospectiveDashboard({
   const [expandedSprintIds, setExpandedSprintIds] = useState<Set<string>>(
     () => new Set([eligibleSprints[0]?.id || "", "carried-over"])
   );
+
+  useEffect(() => {
+    if (eligibleSprints.length > 0) {
+      setExpandedSprintIds((prev) => {
+        if (prev.size === 0 || (prev.size === 1 && prev.has(""))) {
+          return new Set([eligibleSprints[0].id, "carried-over"]);
+        }
+        return prev;
+      });
+    }
+  }, [eligibleSprints]);
 
   // Manual Add Modal state
   const [showAddModal, setShowAddModal] = useState<boolean>(false);

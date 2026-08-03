@@ -50,12 +50,9 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
     fetchData();
   }, []);
 
-  // Derive eligible sprint IDs: all sprints + any retro sprint_id
+  // Derive eligible sprint IDs: only sprints that have been analyzed (have recorded retrospectives)
   const eligibleSprintIds = Array.from(
-    new Set([
-      ...sprints.map((s) => s.id),
-      ...retros.map((r) => r.sprint_id),
-    ])
+    new Set(retros.map((r) => r.sprint_id))
   );
 
   // Derive sprint IDs with pending proposals
