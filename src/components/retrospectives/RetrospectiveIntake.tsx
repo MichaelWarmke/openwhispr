@@ -45,6 +45,8 @@ export default function RetrospectiveIntake({
   const [modelStatus, setModelStatus] = useState<ModelDescribeResult | null>(null);
   const [isCheckingModel, setIsCheckingModel] = useState<boolean>(true);
 
+  const retroAnalystMode = useSettingsStore((s) => s.retroAnalystMode);
+  const retroAnalystProvider = useSettingsStore((s) => s.retroAnalystProvider);
   const retroAnalystModel = useSettingsStore((s) => s.retroAnalystModel);
   const retroReasoningModel = useSettingsStore((s) => s.retroReasoningModel);
   const cleanupModel = useSettingsStore((s) => s.cleanupModel);
@@ -89,6 +91,8 @@ export default function RetrospectiveIntake({
     let isMounted = true;
     retroClient
       .describeModel({
+        retroAnalystMode,
+        retroAnalystProvider,
         retroAnalystModel,
         retroReasoningModel,
         cleanupModel,
@@ -125,7 +129,7 @@ export default function RetrospectiveIntake({
       isMounted = false;
       cleanupProgress();
     };
-  }, [onAnalysisSuccess, retroAnalystModel, retroReasoningModel, cleanupModel, cleanupProvider, cleanupMode]);
+  }, [onAnalysisSuccess, retroAnalystMode, retroAnalystProvider, retroAnalystModel, retroReasoningModel, cleanupModel, cleanupProvider, cleanupMode]);
 
   const handleEditSprintOpen = () => {
     if (selectedSprint) {
@@ -386,16 +390,16 @@ export default function RetrospectiveIntake({
         />
       </div>
 
-      {/* Local Model Status / Warning */}
+      {/* Model Status / Warning */}
       {!isCheckingModel && modelStatus && !modelStatus.available && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
           <div className="flex-1 space-y-1">
             <h4 className="font-semibold text-amber-600 dark:text-amber-400">
-              No local reasoning model selected
+              No reasoning model configured
             </h4>
             <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-              Retrospective analysis runs entirely on your machine, so it needs a locally installed model. Gemini (BYOK) is explicitly not used here to protect sensitive retro data.
+              No valid model is selected or available for Retrospective Analyst. Please configure a local or cloud provider in settings.
             </p>
             <div className="pt-2">
               <Button
@@ -420,7 +424,10 @@ export default function RetrospectiveIntake({
               <span>
                 Model:{" "}
                 <strong className="text-foreground font-medium">
-                  {modelStatus?.modelId || "Qwen2.5 7B (local)"}
+                  {modelStatus?.modelId ||
+                    (retroAnalystMode === "providers" || retroAnalystMode === "cloud" || retroAnalystProvider === "gemini"
+                      ? `Google Gemini${retroAnalystModel ? ` (${retroAnalystModel})` : ""}`
+                      : "Qwen2.5 7B (local)")}
                 </strong>
               </span>
             </div>

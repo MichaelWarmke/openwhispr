@@ -558,15 +558,43 @@ class IPCHandlers {
   }
 
   async _describeRetroModel(settings = {}) {
+    const mode = settings.retroAnalystMode || "local";
+    const provider = settings.retroAnalystProvider || settings.cleanupProvider || "qwen";
+    const rawModelId = settings.retroAnalystModel || settings.retroReasoningModel || settings.cleanupModel || null;
+
+    const isCloudMode = mode === "providers" || mode === "cloud" || mode === "byok" || mode === "openwhispr";
+    const isCloudProvider = ["gemini", "openai", "anthropic", "groq", "tinfoil", "openrouter", "custom"].includes(provider);
+
+    if (isCloudMode || isCloudProvider) {
+      let displayName = rawModelId;
+      if (provider === "gemini") {
+        displayName = rawModelId ? `Google Gemini (${rawModelId})` : "Google Gemini";
+      } else if (provider === "openai") {
+        displayName = rawModelId ? `OpenAI (${rawModelId})` : "OpenAI";
+      } else if (provider === "anthropic") {
+        displayName = rawModelId ? `Anthropic (${rawModelId})` : "Anthropic";
+      } else if (provider === "groq") {
+        displayName = rawModelId ? `Groq (${rawModelId})` : "Groq";
+      } else if (provider === "tinfoil") {
+        displayName = rawModelId ? `Tinfoil (${rawModelId})` : "Tinfoil";
+      } else if (provider === "openrouter") {
+        displayName = rawModelId ? `OpenRouter (${rawModelId})` : "OpenRouter";
+      } else if (!displayName) {
+        displayName = `${provider || "Cloud"} Model`;
+      }
+      return {
+        available: true,
+        modelId: displayName,
+        providerId: provider,
+        contextLength: 32768,
+      };
+    }
+
     const modelManager = require("./modelManagerBridge").default;
     const localBridge = require("../services/localReasoningBridge").default;
     const isAvailable = await localBridge.isAvailable();
 
-    let targetModelId = settings.retroAnalystModel || settings.retroReasoningModel || null;
-
-    if (!targetModelId) {
-      targetModelId = settings.cleanupModel || null;
-    }
+    let targetModelId = rawModelId;
 
     let isDownloaded = false;
     if (targetModelId) {

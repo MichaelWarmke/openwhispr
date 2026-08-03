@@ -334,7 +334,9 @@ export default function ReasoningModelSelector({
   const cortiApiKey = useSettingsStore((s) => s.cortiApiKey);
   const setCortiApiKey = useSettingsStore((s) => s.setCortiApiKey);
   const [selectedMode, setSelectedMode] = useState<"cloud" | "local">(mode || "cloud");
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("openai");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState(
+    CLOUD_PROVIDER_IDS[0] || "gemini"
+  );
   const [selectedLocalProvider, setSelectedLocalProvider] = useState("qwen");
   const {
     models: tinfoilModels,
@@ -414,8 +416,10 @@ export default function ReasoningModelSelector({
     } else if (CLOUD_PROVIDER_IDS.includes(localReasoningProvider)) {
       setSelectedMode("cloud");
       setSelectedCloudProvider(localReasoningProvider);
+    } else if (!CLOUD_PROVIDER_IDS.includes(selectedCloudProvider)) {
+      setSelectedCloudProvider(CLOUD_PROVIDER_IDS[0] || "gemini");
     }
-  }, [localProviders, localReasoningProvider]);
+  }, [localProviders, localReasoningProvider, selectedCloudProvider]);
 
   const loadDownloadedModels = useCallback(async () => {
     try {
