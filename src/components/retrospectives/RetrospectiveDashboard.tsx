@@ -363,8 +363,8 @@ export default function RetrospectiveDashboard({
   };
 
   const sprintOrdering = [...eligibleSprints].sort((a, b) => (a.start_date > b.start_date ? 1 : -1)).map((s) => s.id);
-  const currentSprintId = eligibleSprints[0]?.id || "sprint-24";
-  const carriedOverActions = getCarriedOverActions(actions, currentSprintId, sprintOrdering);
+  const actualCurrentSprintId = sprints[0]?.id || "sprint-24";
+  const carriedOverActions = getCarriedOverActions(actions, actualCurrentSprintId, sprintOrdering);
 
   const openCount = actions.filter((a) => a.status === "open").length;
   const completedCount = actions.filter((a) => a.status === "completed").length;
@@ -682,7 +682,7 @@ export default function RetrospectiveDashboard({
           filteredSprints.map((sprint) => {
             const sprintActions = actions.filter((a) => a.sprint_id === sprint.id);
             const isExpanded = expandedSprintIds.has(sprint.id);
-            const isCurrentSprint = sprint.id === currentSprintId;
+            const isCurrentSprint = sprint.id === actualCurrentSprintId;
             const openInSprint = sprintActions.filter((a) => a.status === "open").length;
             const completedInSprint = sprintActions.filter((a) => a.status === "completed").length;
             const matchingRetros = retros?.filter(
