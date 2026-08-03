@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   type TrackedAction,
   type SprintSnapshot,
   retroClient,
 } from "../../services/retro/client";
-import { getCarriedOverActions } from "../../utils/retroActionUtils";
+import { getCarriedOverActions, extractParticipantsFromTranscript } from "../../utils/retroActionUtils";
 import {
   Plus,
   Filter,
@@ -325,7 +325,17 @@ export default function RetrospectiveDashboard({
       const list = await retroClient.listActions(filters);
       setActions(list);
       const ownerList = await retroClient.listOwners();
-      setOwners(ownerList);
+      const combinedOwnersSet = new Set(ownerList);
+      retros?.forEach((r) => {
+        if (r.meeting_owner && r.meeting_owner.trim()) combinedOwnersSet.add(r.meeting_owner.trim());
+        if (r.transcript) {
+          const speakers = extractParticipantsFromTranscript(r.transcript);
+          speakers.forEach((s) => combinedOwnersSet.add(s.trim()));
+        }
+      });
+      const combinedOwners = Array.from(combinedOwnersSet).filter((n) => n && n !== "Unassigned");
+      combinedOwners.sort((a, b) => a.localeCompare(b));
+      setOwners(combinedOwners);
 
       // Auto-expand sprints that contain action items so accepted items are immediately visible
       setExpandedSprintIds((prev) => {
@@ -647,6 +657,7 @@ export default function RetrospectiveDashboard({
                   key={action.id}
                   action={action}
                   sprints={sprints}
+                  owners={owners}
                   activeMenuId={activeMenuId}
                   setActiveMenuId={setActiveMenuId}
                   onUpdateStatus={handleUpdateStatus}
@@ -794,6 +805,7 @@ export default function RetrospectiveDashboard({
                           key={action.id}
                           action={action}
                           sprints={sprints}
+                          owners={owners}
                           activeMenuId={activeMenuId}
                           setActiveMenuId={setActiveMenuId}
                           onUpdateStatus={handleUpdateStatus}
@@ -1020,6 +1032,7 @@ export default function RetrospectiveDashboard({
 interface ActionCardProps {
   action: TrackedAction;
   sprints: SprintSnapshot[];
+  owners: string[];
   activeMenuId: string | null;
   setActiveMenuId: (id: string | null) => void;
   onUpdateStatus: (id: string, status: "open" | "completed") => void;
@@ -1035,6 +1048,7 @@ interface ActionCardProps {
 function ActionCard({
   action,
   sprints,
+  owners,
   activeMenuId,
   setActiveMenuId,
   onUpdateStatus,
@@ -1081,12 +1095,32 @@ function ActionCard({
     }
   };
 
-  const commitDesc = () => {
+  const descContainerRef = useRef<HTMLDivElement>(null);
+
+  const commitDesc = useCallback(() => {
     setIsEditingDesc(false);
     if (descriptionDraft !== (action.description || "")) {
       onUpdateTitleDescription(action.id, titleDraft.trim() || action.title, descriptionDraft);
     }
-  };
+  }, [action.description, action.id, action.title, descriptionDraft, onUpdateTitleDescription, titleDraft]);
+
+  useEffect(() => {
+    if (!isDescExpanded && !isEditingDesc) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (descContainerRef.current && !descContainerRef.current.contains(e.target as Node)) {
+        setIsDescExpanded(false);
+        if (isEditingDesc) {
+          commitDesc();
+        }
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isDescExpanded, isEditingDesc, commitDesc]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -1102,6 +1136,7 @@ function ActionCard({
     if (e.key === "Escape") {
       setDescriptionDraft(action.description || "");
       setIsEditingDesc(false);
+      setIsDescExpanded(false);
     }
   };
 
@@ -1142,15 +1177,14 @@ function ActionCard({
             </span>
           </div>
 
-          {/* Description Accordion Section */}
-          <div className="pt-1">
+          {/* Description Section */}
+          <div ref={descContainerRef} className="pt-1">
             {isEditingDesc ? (
               <div className="space-y-1.5">
                 <textarea
                   autoFocus
                   value={descriptionDraft}
                   onChange={(e) => setDescriptionDraft(e.target.value)}
-                  onBlur={commitDesc}
                   onKeyDown={handleDescKeyDown}
                   placeholder="Add action description..."
                   rows={Math.max(2, (descriptionDraft.match(/\n/g) || []).length + 1)}
@@ -1161,32 +1195,29 @@ function ActionCard({
                 </div>
               </div>
             ) : action.description ? (
-              <div className="space-y-1.5">
-                <button
-                  onClick={() => setIsDescExpanded(!isDescExpanded)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+              <div
+                onClick={() => setIsDescExpanded((prev) => !prev)}
+                title={isDescExpanded ? "Click outside to collapse" : "Click to view full details"}
+                className="relative group bg-surface-1/30 hover:bg-surface-1/50 border border-border/30 px-3 py-2 rounded-lg cursor-pointer transition-all"
+              >
+                <p
+                  className={`text-xs text-muted-foreground leading-relaxed transition-colors ${
+                    isDescExpanded ? "whitespace-pre-wrap text-foreground" : "line-clamp-1"
+                  }`}
                 >
-                  {isDescExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                  <span>{isDescExpanded ? "Hide Details" : "View Details"}</span>
+                  {action.description}
+                </p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDescExpanded(true);
+                    setIsEditingDesc(true);
+                  }}
+                  className="absolute top-1.5 right-1.5 p-1 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Edit description"
+                >
+                  <Edit3 size={12} />
                 </button>
-
-                {isDescExpanded && (
-                  <div className="relative group bg-surface-1/40 border border-border/40 p-3 rounded-lg">
-                    <p
-                      onClick={() => setIsEditingDesc(true)}
-                      title="Click to edit description"
-                      className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap cursor-pointer"
-                    >
-                      {action.description}
-                    </p>
-                    <button
-                      onClick={() => setIsEditingDesc(true)}
-                      className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Edit3 size={12} />
-                    </button>
-                  </div>
-                )}
               </div>
             ) : (
               <button
@@ -1291,15 +1322,22 @@ function ActionCard({
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2 border-t border-border/30">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Owner:</span>
-            <input
-              type="text"
-              list="dashboard-owners-list"
-              value={action.owner}
+            <span className="text-muted-foreground font-medium">Owner:</span>
+            <select
+              value={action.owner || ""}
               onChange={(e) => onUpdateOwner(action.id, e.target.value)}
-              placeholder="Unassigned"
-              className="h-6 px-2 w-28 rounded border border-border/50 bg-surface-1 text-xs text-foreground focus:outline-none"
-            />
+              className="h-6 px-1.5 rounded border border-border/60 bg-surface-1 text-xs text-foreground font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer max-w-[150px]"
+            >
+              <option value="">Unassigned</option>
+              {owners.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+              {action.owner && !owners.includes(action.owner) && (
+                <option value={action.owner}>{action.owner}</option>
+              )}
+            </select>
           </div>
 
           <div className="flex items-center gap-1.5">

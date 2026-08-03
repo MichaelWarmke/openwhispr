@@ -41,6 +41,43 @@ export function calculateEstimateMinutes(value: number, unit: string): number {
   }
 }
 
+export function extractParticipantsFromTranscript(transcriptText: string | null | undefined): string[] {
+  if (!transcriptText) return [];
+  const names = new Set<string>();
+  const lines = transcriptText.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Pattern 1: <v Speaker Name> or <v.narrator Speaker Name>
+    const vMatch = trimmed.match(/<v(?:\.[^>]+)?\s+([^>]+)>/i);
+    if (vMatch && vMatch[1]) {
+      const name = vMatch[1].replace(/<[^>]+>/g, "").trim();
+      if (name && name.length >= 2 && name.length <= 40 && !/^(WEBVTT|NOTE|STYLE|REGION)$/i.test(name)) {
+        names.add(name);
+      }
+    }
+
+    // Pattern 2: Speaker Name: or [Speaker Name]: or Speaker Name -
+    const colonMatch = trimmed.match(/^(?:<v[^>]*>)?\s*\[?([A-Z][a-zA-Z0-9_'\- ]{1,35})\]?\s*[:\-]/);
+    if (colonMatch && colonMatch[1]) {
+      const name = colonMatch[1].trim();
+      if (
+        name &&
+        name.length >= 2 &&
+        name.length <= 40 &&
+        !/^(WEBVTT|NOTE|STYLE|REGION|TIMESTAMP|SPEAKER|SUMMARY|ACTION|ITEM|RETRO)$/i.test(name) &&
+        !/^\d+$/.test(name)
+      ) {
+        names.add(name);
+      }
+    }
+  }
+
+  return Array.from(names);
+}
+
 export interface TrackedActionItem {
   id: string;
   sprint_id: string;

@@ -1,5 +1,5 @@
 const { randomUUID } = require("crypto");
-const { normalizeOwner, calculateEstimateMinutes } = require("../utils/retroActionUtils.ts");
+const { normalizeOwner, calculateEstimateMinutes, extractParticipantsFromTranscript } = require("../utils/retroActionUtils.ts");
 const { normalizeDedupKey } = require("../utils/retroDedup.ts");
 
 function runRetroMigrations(db) {
@@ -607,14 +607,40 @@ class RetroRepository {
   }
 
   async listOwners() {
-    const rows = this.db
-      .prepare(`
-        SELECT DISTINCT owner FROM retro_tracked_actions
-        WHERE owner IS NOT NULL AND owner != ''
-        ORDER BY owner_normalized ASC
-      `)
-      .all();
-    return Promise.resolve(rows.map((r) => r.owner));
+    const namesSet = new Set();
+
+    try {
+      const actionRows = this.db
+        .prepare(`SELECT DISTINCT owner FROM retro_tracked_actions WHERE owner IS NOT NULL AND owner != ''`)
+        .all();
+      actionRows.forEach((r) => r.owner && namesSet.add(r.owner.trim()));
+    } catch {}
+
+    try {
+      const proposalRows = this.db
+        .prepare(`SELECT DISTINCT suggested_owner FROM retro_proposals WHERE suggested_owner IS NOT NULL AND suggested_owner != ''`)
+        .all();
+      proposalRows.forEach((r) => r.suggested_owner && namesSet.add(r.suggested_owner.trim()));
+    } catch {}
+
+    try {
+      const retroRows = this.db
+        .prepare(`SELECT meeting_owner, transcript FROM retrospectives`)
+        .all();
+      retroRows.forEach((r) => {
+        if (r.meeting_owner && r.meeting_owner.trim()) {
+          namesSet.add(r.meeting_owner.trim());
+        }
+        if (r.transcript) {
+          const speakers = extractParticipantsFromTranscript(r.transcript);
+          speakers.forEach((s) => namesSet.add(s.trim()));
+        }
+      });
+    } catch {}
+
+    const list = Array.from(namesSet).filter((n) => n && n !== "Unassigned");
+    list.sort((a, b) => a.localeCompare(b));
+    return Promise.resolve(list);
   }
 
   async createMockJiraTicket(trackedActionId, summary, description) {
