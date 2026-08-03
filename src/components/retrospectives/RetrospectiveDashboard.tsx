@@ -1168,13 +1168,11 @@ function ActionCard({
               </h4>
             )}
 
-            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-surface-1 text-muted-foreground shrink-0">
-              {action.source === "explicit"
-                ? "Explicit action"
-                : action.source === "coach"
-                ? "Coach suggestion"
-                : "Manual action"}
-            </span>
+            {action.source === "coach" && (
+              <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                Coach suggestion
+              </span>
+            )}
           </div>
 
           {/* Description Section */}
