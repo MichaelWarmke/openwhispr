@@ -765,7 +765,172 @@ class IPCHandlers {
     const saved = await repo.saveProposals(retrospectiveId, deduped, nextRunCount);
 
     emitProgress("completed", totalChunks, totalChunks);
+
+    // Also run topic coverage evaluation if topics were accepted
+    try {
+      await this._evaluateTopicCoverage(retrospectiveId, retro.sprint_id, retro.transcript, modelStatus);
+    } catch (covErr) {
+      debugLogger.warn("Topic coverage evaluation error", { error: covErr.message });
+    }
+
     return saved;
+  }
+
+  async _suggestCoachTopics(projectId, sprintId, settings = {}) {
+    const repo = this._getRetroRepository();
+    const sprint = await repo.getSprintSnapshot(sprintId);
+    const existingActions = await repo.listTrackedActions({ sprintId });
+    const modelStatus = await this._describeRetroModel(settings);
+
+    const contextText =
+      `Sprint: ${sprint ? sprint.name : sprintId || "Current"}\n` +
+      `Committed Points: ${sprint ? sprint.committed_points : 0} | Completed: ${sprint ? sprint.completed_points : 0} | Velocity: ${sprint ? sprint.velocity : 0}\n` +
+      `Blockers: ${sprint ? sprint.blockers : "None"}\n` +
+      `Burndown Trend: ${sprint ? sprint.burndown_trend : "on_track"}\n` +
+      `Open Tracked Actions (${existingActions.length}): ${existingActions.map((a) => a.title).join(", ") || "None"}\n`;
+
+    const defaultTopics = [
+      {
+        project_id: projectId || "proj-default-gen-eng",
+        sprint_id: sprintId,
+        title: "Sprint Blocker Resolution & PR Review Delays",
+        rationale: `Metrics show velocity impacted by blockers (${sprint?.blockers || "PR review delays"}).`,
+        category: "metric_driven",
+        priority: 1,
+        state: "suggested",
+      },
+      {
+        project_id: projectId || "proj-default-gen-eng",
+        sprint_id: sprintId,
+        title: "Capacity Planning & Commitment vs Completion Gap",
+        rationale: `Team completed ${sprint?.completed_points || 0} out of ${sprint?.committed_points || 0} committed points.`,
+        category: "metric_driven",
+        priority: 2,
+        state: "suggested",
+      },
+      {
+        project_id: projectId || "proj-default-gen-eng",
+        sprint_id: sprintId,
+        title: "Carried-Over Action Item Follow-Through",
+        rationale: `${existingActions.length} action items carried over from previous sprints need attention.`,
+        category: "carryover",
+        priority: 3,
+        state: "suggested",
+      },
+    ];
+
+    if (!modelStatus.available || !modelStatus.modelId) {
+      await repo.saveTopics(defaultTopics);
+      return repo.listTopics(projectId, sprintId);
+    }
+
+    try {
+      const localBridge = require("../services/localReasoningBridge").default;
+      const prompt =
+        `You are an expert Agile Coach preparing for an upcoming team retrospective.\n` +
+        `Based on the team's sprint metrics and open action items below, suggest 3 to 5 targeted discussion topics for the team's retrospective meeting.\n\n` +
+        `${contextText}\n\n` +
+        `Return ONLY a JSON object with this exact schema:\n` +
+        `{\n` +
+        `  "topics": [\n` +
+        `    {\n` +
+        `      "title": "Topic title",\n` +
+        `      "rationale": "Explanation based on metrics or blockers",\n` +
+        `      "category": "metric_driven",\n` +
+        `      "priority": 1\n` +
+        `    }\n` +
+        `  ]\n` +
+        `}\n` +
+        `Category must be one of: "metric_driven", "carryover", "blind_spot", "best_practice", "recurring". Priority is 1 to 5. Return valid JSON only with no prose.`;
+
+      const output = await localBridge.processText(prompt, modelStatus.modelId, {
+        priority: "batch",
+        temperature: 0.2,
+        maxTokens: 2048,
+        timeoutMs: 60000,
+      });
+
+      const cleanJson = output.replace(/```json/gi, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleanJson);
+      const generated = (parsed.topics || []).map((t) => ({
+        project_id: projectId || "proj-default-gen-eng",
+        sprint_id: sprintId,
+        title: t.title,
+        rationale: t.rationale || "",
+        category: t.category || "metric_driven",
+        priority: Number(t.priority) || 3,
+        state: "suggested",
+      }));
+
+      const finalTopics = generated.length > 0 ? generated : defaultTopics;
+      await repo.saveTopics(finalTopics);
+    } catch (err) {
+      debugLogger.warn("Failed LLM topic suggestion, fallback to defaults", { error: err.message });
+      await repo.saveTopics(defaultTopics);
+    }
+
+    return repo.listTopics(projectId, sprintId);
+  }
+
+  async _evaluateTopicCoverage(retrospectiveId, sprintId, transcript, modelStatus) {
+    const repo = this._getRetroRepository();
+    const topics = await repo.listTopics(null, sprintId);
+    const acceptedTopics = topics.filter((t) => t.state === "accepted");
+    if (!acceptedTopics.length) return [];
+
+    const localBridge = require("../services/localReasoningBridge").default;
+    const topicListText = acceptedTopics
+      .map((t, idx) => `${idx + 1}. [ID: ${t.id}] Title: "${t.title}" — Rationale: "${t.rationale}"`)
+      .join("\n");
+
+    const prompt =
+      `Analyze the retrospective transcript below and evaluate how well the accepted coaching topics were discussed in the meeting:\n\n` +
+      `COACHING TOPICS:\n${topicListText}\n\n` +
+      `TRANSCRIPT:\n${transcript.slice(0, 8000)}\n\n` +
+      `Return ONLY a JSON object with this exact schema:\n` +
+      `{\n` +
+      `  "outcomes": [\n` +
+      `    {\n` +
+      `      "topic_id": "...",\n` +
+      `      "coverage_score": 0.8,\n` +
+      `      "engagement_depth": "deep",\n` +
+      `      "speaker_count": 3,\n` +
+      `      "sentiment": "positive",\n` +
+      `      "agent_notes": "...",\n` +
+      `      "relevant_quotes": ["..."]\n` +
+      `    }\n` +
+      `  ]\n` +
+      `}\n` +
+      `Return valid JSON only.`;
+
+    try {
+      const output = await localBridge.processText(prompt, modelStatus.modelId, {
+        priority: "batch",
+        temperature: 0.0,
+        maxTokens: 2048,
+        timeoutMs: 60000,
+      });
+
+      const cleanJson = output.replace(/```json/gi, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleanJson);
+      const outcomes = (parsed.outcomes || []).map((o) => ({
+        topic_id: o.topic_id,
+        retrospective_id: retrospectiveId,
+        coverage_score: Number(o.coverage_score) || 0.0,
+        engagement_depth: o.engagement_depth || "none",
+        speaker_count: Number(o.speaker_count) || 1,
+        sentiment: o.sentiment || "neutral",
+        produced_actions: 1,
+        agent_notes: o.agent_notes || "",
+        relevant_quotes: o.relevant_quotes || [],
+      }));
+
+      await repo.saveTopicOutcomes(outcomes);
+      return outcomes;
+    } catch (err) {
+      debugLogger.warn("Failed topic coverage evaluation", { error: err.message });
+      return [];
+    }
   }
 
   _buildFolderMap() {
@@ -1528,6 +1693,20 @@ class IPCHandlers {
         "jira.createMock",
         "models.describe",
         "analysis.run",
+        "projects.list",
+        "projects.get",
+        "projects.create",
+        "projects.update",
+        "projects.delete",
+        "coach.suggestTopics",
+        "coach.listTopics",
+        "coach.updateTopic",
+        "coach.acceptTopic",
+        "coach.dismissTopic",
+        "coach.listOutcomes",
+        "coach.listInsights",
+        "coach.listSlackNotifications",
+        "coach.sendSlack",
       ]);
 
       if (!ALLOWED_OPS.has(op)) {
@@ -1588,6 +1767,41 @@ class IPCHandlers {
             payload.settings || {},
             event.sender
           );
+        case "projects.list":
+          return repo.listProjects();
+        case "projects.get":
+          return repo.getProject(payload.id);
+        case "projects.create":
+          return repo.createProject(payload);
+        case "projects.update":
+          return repo.updateProject(payload.id, payload.updates);
+        case "projects.delete":
+          return repo.deleteProject(payload.id);
+        case "coach.suggestTopics":
+          return this._suggestCoachTopics(payload.projectId, payload.sprintId, payload.settings);
+        case "coach.listTopics":
+          return repo.listTopics(payload?.projectId, payload?.sprintId);
+        case "coach.updateTopic":
+          return repo.updateTopic(payload.id, payload.updates);
+        case "coach.acceptTopic":
+          return repo.acceptTopic(payload.id);
+        case "coach.dismissTopic":
+          return repo.dismissTopic(payload.id);
+        case "coach.listOutcomes":
+          return repo.listTopicOutcomes(payload.retrospectiveId);
+        case "coach.listInsights":
+          return repo.listInsights(payload?.projectId);
+        case "coach.listSlackNotifications":
+          return repo.listSlackNotifications(payload?.projectId);
+        case "coach.sendSlack":
+          return repo.saveSlackNotification({
+            project_id: payload.projectId || "proj-default-gen-eng",
+            recipient_name: payload.recipientName,
+            recipient_slack_id: payload.recipientSlackId || "",
+            message_type: payload.messageType,
+            message_content: payload.content,
+            status: "sent",
+          });
         default:
           throw new Error(`Unsupported retro op: ${op}`);
       }

@@ -176,6 +176,123 @@ function runRetroMigrations(db) {
     });
     migrateV3();
   }
+
+  if (currentVersion < 4) {
+    const migrateV4 = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          project_id TEXT NOT NULL UNIQUE,
+          slack_channel_id TEXT NOT NULL DEFAULT '',
+          description TEXT DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      try {
+        db.exec(`ALTER TABLE sprint_snapshots ADD COLUMN project_id TEXT REFERENCES projects(id);`);
+      } catch (_) {}
+      try {
+        db.exec(`ALTER TABLE retrospectives ADD COLUMN project_id TEXT REFERENCES projects(id);`);
+      } catch (_) {}
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS coach_topics (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          sprint_id TEXT NOT NULL REFERENCES sprint_snapshots(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          rationale TEXT NOT NULL DEFAULT '',
+          category TEXT NOT NULL DEFAULT 'general',
+          priority INTEGER NOT NULL DEFAULT 3,
+          state TEXT NOT NULL DEFAULT 'suggested',
+          source_data TEXT DEFAULT '{}',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS coach_topic_outcomes (
+          id TEXT PRIMARY KEY,
+          topic_id TEXT NOT NULL REFERENCES coach_topics(id) ON DELETE CASCADE,
+          retrospective_id TEXT NOT NULL REFERENCES retrospectives(id) ON DELETE CASCADE,
+          coverage_score REAL NOT NULL DEFAULT 0.0,
+          engagement_depth TEXT NOT NULL DEFAULT 'none',
+          speaker_count INTEGER NOT NULL DEFAULT 0,
+          sentiment TEXT NOT NULL DEFAULT 'neutral',
+          produced_actions INTEGER NOT NULL DEFAULT 0,
+          agent_notes TEXT DEFAULT '',
+          relevant_quotes TEXT DEFAULT '[]',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS coach_insights (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          insight_type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          confidence REAL NOT NULL DEFAULT 0.5,
+          related_sprint_ids TEXT DEFAULT '[]',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS coach_slack_notifications (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          recipient_name TEXT NOT NULL,
+          recipient_slack_id TEXT DEFAULT '',
+          message_type TEXT NOT NULL,
+          message_content TEXT NOT NULL,
+          sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          status TEXT NOT NULL DEFAULT 'sent'
+        );
+      `);
+
+      const projCount = db.prepare("SELECT COUNT(*) as c FROM projects").get();
+      let defaultProjectId = "proj-default-gen-eng";
+      if (projCount.c === 0) {
+        db.prepare(`
+          INSERT INTO projects (id, name, project_id, slack_channel_id, description)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(
+          defaultProjectId,
+          "General Engineering",
+          "PROJ-GEN-ENG",
+          "C012345678",
+          "Default engineering team project"
+        );
+      } else {
+        const first = db.prepare("SELECT id FROM projects LIMIT 1").get();
+        if (first) defaultProjectId = first.id;
+      }
+
+      db.prepare(`UPDATE sprint_snapshots SET project_id = ? WHERE project_id IS NULL OR project_id = ''`).run(defaultProjectId);
+      db.prepare(`UPDATE retrospectives SET project_id = ? WHERE project_id IS NULL OR project_id = ''`).run(defaultProjectId);
+
+      db.pragma("user_version = 4");
+    });
+    migrateV4();
+  }
+
+  if (currentVersion < 5) {
+    const migrateV5 = db.transaction(() => {
+      try {
+        db.exec(`ALTER TABLE projects ADD COLUMN notification_settings TEXT DEFAULT '{}';`);
+      } catch (_) {}
+      db.pragma("user_version = 5");
+    });
+    migrateV5();
+  }
 }
 
 class RetroRepository {
@@ -701,6 +818,196 @@ class RetroRepository {
     });
 
     return Promise.resolve(transaction());
+  }
+
+  // --- Projects API ---
+  async listProjects() {
+    const rows = this.db.prepare("SELECT * FROM projects ORDER BY name ASC").all();
+    return Promise.resolve(rows);
+  }
+
+  async getProject(id) {
+    const row = this.db.prepare("SELECT * FROM projects WHERE id = ?").get(id);
+    return Promise.resolve(row || null);
+  }
+
+  async createProject({ name, project_id, slack_channel_id, description }) {
+    const id = randomUUID();
+    const pid = (project_id || name.toLowerCase().replace(/[^a-z0-9]/g, "-")).toUpperCase();
+    this.db.prepare(`
+      INSERT INTO projects (id, name, project_id, slack_channel_id, description)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, name, pid, slack_channel_id || '', description || '');
+    return this.getProject(id);
+  }
+
+  async updateProject(id, updates) {
+    const fields = [];
+    const values = [];
+    if (updates.name !== undefined) { fields.push("name = ?"); values.push(updates.name); }
+    if (updates.project_id !== undefined) { fields.push("project_id = ?"); values.push(updates.project_id); }
+    if (updates.slack_channel_id !== undefined) { fields.push("slack_channel_id = ?"); values.push(updates.slack_channel_id); }
+    if (updates.description !== undefined) { fields.push("description = ?"); values.push(updates.description); }
+    if (updates.notification_settings !== undefined) {
+      fields.push("notification_settings = ?");
+      values.push(typeof updates.notification_settings === 'object' ? JSON.stringify(updates.notification_settings) : updates.notification_settings);
+    }
+
+    if (fields.length > 0) {
+      fields.push("updated_at = datetime('now')");
+      values.push(id);
+      this.db.prepare(`UPDATE projects SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    }
+    return this.getProject(id);
+  }
+
+  async deleteProject(id) {
+    const res = this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+    return Promise.resolve(res.changes > 0);
+  }
+
+  // --- Coach Topics API ---
+  async listTopics(projectId, sprintId) {
+    let query = "SELECT * FROM coach_topics WHERE 1=1";
+    const params = [];
+    if (projectId) { query += " AND project_id = ?"; params.push(projectId); }
+    if (sprintId) { query += " AND sprint_id = ?"; params.push(sprintId); }
+    query += " ORDER BY priority ASC, created_at DESC";
+    const rows = this.db.prepare(query).all(...params);
+    return Promise.resolve(rows);
+  }
+
+  async saveTopics(topics) {
+    const transaction = this.db.transaction(() => {
+      const stmt = this.db.prepare(`
+        INSERT INTO coach_topics (id, project_id, sprint_id, title, rationale, category, priority, state, source_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const inserted = [];
+      for (const t of topics) {
+        const id = t.id || randomUUID();
+        stmt.run(
+          id,
+          t.project_id,
+          t.sprint_id,
+          t.title,
+          t.rationale || '',
+          t.category || 'general',
+          t.priority || 3,
+          t.state || 'suggested',
+          typeof t.source_data === 'object' ? JSON.stringify(t.source_data) : (t.source_data || '{}')
+        );
+        inserted.push(id);
+      }
+      return inserted;
+    });
+    return Promise.resolve(transaction());
+  }
+
+  async updateTopic(id, updates) {
+    const fields = [];
+    const values = [];
+    if (updates.title !== undefined) { fields.push("title = ?"); values.push(updates.title); }
+    if (updates.rationale !== undefined) { fields.push("rationale = ?"); values.push(updates.rationale); }
+    if (updates.category !== undefined) { fields.push("category = ?"); values.push(updates.category); }
+    if (updates.priority !== undefined) { fields.push("priority = ?"); values.push(updates.priority); }
+    if (updates.state !== undefined) { fields.push("state = ?"); values.push(updates.state); }
+
+    if (fields.length > 0) {
+      fields.push("updated_at = datetime('now')");
+      values.push(id);
+      this.db.prepare(`UPDATE coach_topics SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    }
+    const row = this.db.prepare("SELECT * FROM coach_topics WHERE id = ?").get(id);
+    return Promise.resolve(row || null);
+  }
+
+  async acceptTopic(id) {
+    return this.updateTopic(id, { state: 'accepted' });
+  }
+
+  async dismissTopic(id) {
+    return this.updateTopic(id, { state: 'dismissed' });
+  }
+
+  // --- Topic Outcomes & Insights ---
+  async saveTopicOutcomes(outcomes) {
+    const transaction = this.db.transaction(() => {
+      const stmt = this.db.prepare(`
+        INSERT INTO coach_topic_outcomes (
+          id, topic_id, retrospective_id, coverage_score, engagement_depth,
+          speaker_count, sentiment, produced_actions, agent_notes, relevant_quotes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const o of outcomes) {
+        const id = o.id || randomUUID();
+        stmt.run(
+          id,
+          o.topic_id,
+          o.retrospective_id,
+          o.coverage_score ?? 0.0,
+          o.engagement_depth || 'none',
+          o.speaker_count ?? 0,
+          o.sentiment || 'neutral',
+          o.produced_actions ?? 0,
+          o.agent_notes || '',
+          typeof o.relevant_quotes === 'object' ? JSON.stringify(o.relevant_quotes) : (o.relevant_quotes || '[]')
+        );
+      }
+    });
+    return Promise.resolve(transaction());
+  }
+
+  async listTopicOutcomes(retrospectiveId) {
+    const rows = this.db.prepare(`
+      SELECT o.*, t.title as topic_title, t.category as topic_category
+      FROM coach_topic_outcomes o
+      JOIN coach_topics t ON o.topic_id = t.id
+      WHERE o.retrospective_id = ?
+    `).all(retrospectiveId);
+    return Promise.resolve(rows);
+  }
+
+  async listInsights(projectId) {
+    let query = "SELECT * FROM coach_insights WHERE is_active = 1";
+    const params = [];
+    if (projectId) { query += " AND project_id = ?"; params.push(projectId); }
+    query += " ORDER BY confidence DESC, created_at DESC";
+    const rows = this.db.prepare(query).all(...params);
+    return Promise.resolve(rows);
+  }
+
+  async saveInsight({ project_id, insight_type, title, description, confidence, related_sprint_ids }) {
+    const id = randomUUID();
+    this.db.prepare(`
+      INSERT INTO coach_insights (id, project_id, insight_type, title, description, confidence, related_sprint_ids)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, project_id, insight_type, title, description,
+      confidence ?? 0.5,
+      typeof related_sprint_ids === 'object' ? JSON.stringify(related_sprint_ids) : (related_sprint_ids || '[]')
+    );
+    const row = this.db.prepare("SELECT * FROM coach_insights WHERE id = ?").get(id);
+    return Promise.resolve(row);
+  }
+
+  async listSlackNotifications(projectId) {
+    let query = "SELECT * FROM coach_slack_notifications";
+    const params = [];
+    if (projectId) { query += " WHERE project_id = ?"; params.push(projectId); }
+    query += " ORDER BY sent_at DESC LIMIT 50";
+    const rows = this.db.prepare(query).all(...params);
+    return Promise.resolve(rows);
+  }
+
+  async saveSlackNotification({ project_id, recipient_name, recipient_slack_id, message_type, message_content, status }) {
+    const id = randomUUID();
+    this.db.prepare(`
+      INSERT INTO coach_slack_notifications (id, project_id, recipient_name, recipient_slack_id, message_type, message_content, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, project_id, recipient_name, recipient_slack_id || '', message_type, message_content, status || 'sent');
+    const row = this.db.prepare("SELECT * FROM coach_slack_notifications WHERE id = ?").get(id);
+    return Promise.resolve(row);
   }
 }
 

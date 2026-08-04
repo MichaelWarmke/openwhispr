@@ -4,6 +4,7 @@ import {
   type Retrospective,
   type ModelDescribeResult,
   type RetroAnalysisProgress,
+  type CoachTopic,
   retroClient,
 } from "../../services/retro/client";
 import {
@@ -45,6 +46,47 @@ export default function RetrospectiveIntake({
 
   const [modelStatus, setModelStatus] = useState<ModelDescribeResult | null>(null);
   const [isCheckingModel, setIsCheckingModel] = useState<boolean>(true);
+
+  const [coachTopics, setCoachTopics] = useState<CoachTopic[]>([]);
+  const [isGeneratingTopics, setIsGeneratingTopics] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (selectedSprintId) {
+      loadTopicsForSprint(selectedSprintId);
+    }
+  }, [selectedSprintId]);
+
+  const loadTopicsForSprint = async (sprintId: string) => {
+    try {
+      const list = await retroClient.listTopics(undefined, sprintId);
+      setCoachTopics(list || []);
+    } catch (err) {
+      console.warn("Failed to load topics for sprint", err);
+    }
+  };
+
+  const handleSuggestTopics = async () => {
+    if (!selectedSprintId) return;
+    setIsGeneratingTopics(true);
+    try {
+      const list = await retroClient.suggestCoachTopics(undefined, selectedSprintId);
+      setCoachTopics(list || []);
+    } catch (err) {
+      console.error("Failed to suggest topics", err);
+    } finally {
+      setIsGeneratingTopics(false);
+    }
+  };
+
+  const handleToggleTopicState = async (topicId: string, currentState: string) => {
+    const nextState = currentState === "accepted" ? "suggested" : "accepted";
+    try {
+      await retroClient.updateTopic(topicId, { state: nextState });
+      loadTopicsForSprint(selectedSprintId);
+    } catch (err) {
+      console.error("Failed to update topic state", err);
+    }
+  };
 
   const retroAnalystMode = useSettingsStore((s) => s.retroAnalystMode);
   const retroAnalystProvider = useSettingsStore((s) => s.retroAnalystProvider);
@@ -294,6 +336,80 @@ export default function RetrospectiveIntake({
         </div>
       </div>
 
+      {/* Step 2: AI Coach Suggested Discussion Topics */}
+      <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="text-amber-500" size={16} />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+              Step 2: AI Coach Discussion Agenda
+            </h4>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSuggestTopics}
+            disabled={isGeneratingTopics}
+            className="h-7 text-xs font-semibold gap-1 bg-background hover:bg-surface-1"
+          >
+            {isGeneratingTopics ? (
+              <>
+                <Loader2 size={12} className="animate-spin" /> Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={12} className="text-amber-500" /> Suggest Topics
+              </>
+            )}
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Review discussion topics proposed by the Agile Coach Agent based on sprint metrics and carried actions. Accept topics to set the retro agenda.
+        </p>
+
+        {coachTopics.length === 0 ? (
+          <div className="p-3 text-center border border-dashed border-border/60 rounded-lg text-xs text-muted-foreground">
+            No discussion topics generated for this sprint yet. Click <strong>Suggest Topics</strong> above to let the AI Coach analyze sprint metrics.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {coachTopics.map((topic) => (
+              <div
+                key={topic.id}
+                className={`p-3 rounded-lg border text-xs space-y-1 transition-all ${
+                  topic.state === "accepted"
+                    ? "border-emerald-500/40 bg-emerald-500/10"
+                    : "border-border/50 bg-background"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      {topic.state === "accepted" && <CheckCircle2 size={14} className="text-emerald-500" />}
+                      {topic.title}
+                    </span>
+                    <p className="text-muted-foreground">{topic.rationale}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={topic.state === "accepted" ? "default" : "outline"}
+                    onClick={() => handleToggleTopicState(topic.id, topic.state)}
+                    className={`h-6 text-[11px] px-2 font-semibold ${
+                      topic.state === "accepted"
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {topic.state === "accepted" ? "Accepted" : "Accept Topic"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Transcript Source */}
       <div className="space-y-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -434,7 +550,7 @@ export default function RetrospectiveIntake({
                 Model:{" "}
                 <strong className="text-foreground font-medium">
                   {modelStatus?.modelId ||
-                    (retroAnalystMode === "providers" || retroAnalystMode === "cloud" || retroAnalystProvider === "gemini"
+                    (retroAnalystMode === "providers" || retroAnalystProvider === "gemini"
                       ? `Google Gemini${retroAnalystModel ? ` (${retroAnalystModel})` : ""}`
                       : "Qwen2.5 7B (local)")}
                 </strong>

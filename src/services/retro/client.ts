@@ -98,6 +98,70 @@ async function invoke<T>(op: string, payload?: any): Promise<T> {
   return window.electronAPI.retro.invoke(op, payload);
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  project_id: string;
+  slack_channel_id: string;
+  description?: string;
+  notification_settings?: string | Record<string, boolean>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CoachTopic {
+  id: string;
+  project_id: string;
+  sprint_id: string;
+  title: string;
+  rationale: string;
+  category: "metric_driven" | "carryover" | "blind_spot" | "best_practice" | "recurring" | "general";
+  priority: number;
+  state: "suggested" | "accepted" | "dismissed" | "discussed" | "resolved";
+  source_data?: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CoachTopicOutcome {
+  id: string;
+  topic_id: string;
+  retrospective_id: string;
+  topic_title?: string;
+  topic_category?: string;
+  coverage_score: number;
+  engagement_depth: "none" | "surface" | "moderate" | "deep";
+  speaker_count: number;
+  sentiment: "positive" | "negative" | "frustrated" | "neutral" | "mixed";
+  produced_actions: number;
+  agent_notes?: string;
+  relevant_quotes?: string | string[];
+  created_at: string;
+}
+
+export interface CoachInsight {
+  id: string;
+  project_id: string;
+  insight_type: "recurring_issue" | "improving_trend" | "blind_spot" | "engagement_pattern" | "correlation";
+  title: string;
+  description: string;
+  confidence: number;
+  related_sprint_ids?: string | string[];
+  is_active: number;
+  created_at: string;
+}
+
+export interface CoachSlackNotification {
+  id: string;
+  project_id: string;
+  recipient_name: string;
+  recipient_slack_id?: string;
+  message_type: string;
+  message_content: string;
+  sent_at: string;
+  status: string;
+}
+
 export const retroClient = {
   // Sprint operations
   listSprints: () => invoke<SprintSnapshot[]>("sprints.list"),
@@ -165,4 +229,28 @@ export const retroClient = {
   // Audio copy helper
   copyRetroAudio: (sourcePath: string, retrospectiveId: string) =>
     invoke<{ copiedPath: string }>("retro.copyAudio", { sourcePath, retrospectiveId }),
+
+  // Projects operations
+  listProjects: () => invoke<Project[]>("projects.list"),
+  getProject: (id: string) => invoke<Project | null>("projects.get", { id }),
+  createProject: (data: { name: string; project_id?: string; slack_channel_id?: string; description?: string }) =>
+    invoke<Project>("projects.create", data),
+  updateProject: (id: string, updates: Partial<Project>) =>
+    invoke<Project>("projects.update", { id, updates }),
+  deleteProject: (id: string) => invoke<boolean>("projects.delete", { id }),
+
+  // Coach operations
+  suggestCoachTopics: (projectId?: string, sprintId?: string) =>
+    invoke<CoachTopic[]>("coach.suggestTopics", { projectId, sprintId }),
+  listTopics: (projectId?: string, sprintId?: string) =>
+    invoke<CoachTopic[]>("coach.listTopics", { projectId, sprintId }),
+  updateTopic: (id: string, updates: Partial<CoachTopic>) =>
+    invoke<CoachTopic>("coach.updateTopic", { id, updates }),
+  acceptTopic: (id: string) => invoke<CoachTopic>("coach.acceptTopic", { id }),
+  dismissTopic: (id: string) => invoke<CoachTopic>("coach.dismissTopic", { id }),
+  listOutcomes: (retrospectiveId: string) => invoke<CoachTopicOutcome[]>("coach.listOutcomes", { retrospectiveId }),
+  listInsights: (projectId?: string) => invoke<CoachInsight[]>("coach.listInsights", { projectId }),
+  listSlackNotifications: (projectId?: string) => invoke<CoachSlackNotification[]>("coach.listSlackNotifications", { projectId }),
+  sendSlack: (data: { projectId?: string; recipientName: string; messageType: string; content: string }) =>
+    invoke<CoachSlackNotification>("coach.sendSlack", data),
 };
