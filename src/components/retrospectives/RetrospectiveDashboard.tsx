@@ -25,6 +25,9 @@ import {
   Edit3,
   Sparkles,
   RefreshCw,
+  ArrowUpRight,
+  FileText,
+  Copy,
 } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -256,25 +259,12 @@ export default function RetrospectiveDashboard({
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [sprintFilter, setSprintFilter] = useState<string>("all");
 
-  // Open sprint accordions state: current sprint open by default
-  const [expandedSprintIds, setExpandedSprintIds] = useState<Set<string>>(
-    () => new Set([eligibleSprints[0]?.id || "", "carried-over"])
-  );
-
-  useEffect(() => {
-    if (eligibleSprints.length > 0) {
-      setExpandedSprintIds((prev) => {
-        if (prev.size === 0 || (prev.size === 1 && prev.has(""))) {
-          return new Set([eligibleSprints[0].id, "carried-over"]);
-        }
-        return prev;
-      });
-    }
-  }, [eligibleSprints]);
+  // Open sprint accordions state: collapsed by default
+  const [expandedSprintIds, setExpandedSprintIds] = useState<Set<string>>(() => new Set());
 
   // Manual Add Modal state
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
-  const [manualSprintId, setManualSprintId] = useState<string>(eligibleSprints[0]?.id || sprints[0]?.id || "sprint-24");
+  const [manualSprintId, setManualSprintId] = useState<string>(eligibleSprints[0]?.id || sprints[0]?.id || "sprint-23");
   const [manualTitle, setManualTitle] = useState<string>("");
   const [manualDescription, setManualDescription] = useState<string>("");
   const [manualOwner, setManualOwner] = useState<string>("");
@@ -285,11 +275,48 @@ export default function RetrospectiveDashboard({
   const [jiraSummary, setJiraSummary] = useState<string>("");
   const [jiraDescription, setJiraDescription] = useState<string>("");
 
+  // View Transcript Modal state
+  const [viewingTranscript, setViewingTranscript] = useState<{
+    sprintName: string;
+    transcript: string;
+    owner?: string;
+  } | null>(null);
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+
   // Provenance / Original AI Text Modal state
   const [provenanceAction, setProvenanceAction] = useState<TrackedAction | null>(null);
 
   // Active menu dropdown action ID
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Active sprint menu dropdown ID
+  const [activeSprintMenuId, setActiveSprintMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeSprintMenuId) return;
+    const handleClickOutside = () => setActiveSprintMenuId(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [activeSprintMenuId]);
+
+  // Highlighted action item state (for scroll to action from carried over)
+  const [highlightedActionId, setHighlightedActionId] = useState<string | null>(null);
+
+  const handleScrollToAction = (sprintId: string, actionId: string) => {
+    setExpandedSprintIds((prev) => new Set(prev).add(sprintId));
+    setHighlightedActionId(actionId);
+
+    setTimeout(() => {
+      const el = document.getElementById(`action-card-${actionId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 120);
+
+    setTimeout(() => {
+      setHighlightedActionId(null);
+    }, 2500);
+  };
 
   // Jira refresh loading state
   const [isRefreshingJira, setIsRefreshingJira] = useState<boolean>(false);
@@ -318,8 +345,6 @@ export default function RetrospectiveDashboard({
 
       if (sprintFilter !== "all") {
         filters.sprintId = sprintFilter;
-      } else {
-        filters.sprintIds = eligibleSprintIds;
       }
 
       const list = await retroClient.listActions(filters);
@@ -337,16 +362,6 @@ export default function RetrospectiveDashboard({
       combinedOwners.sort((a, b) => a.localeCompare(b));
       setOwners(combinedOwners);
 
-      // Auto-expand sprints that contain action items so accepted items are immediately visible
-      setExpandedSprintIds((prev) => {
-        const next = new Set(prev);
-        list.forEach((a) => {
-          if (a.sprint_id) next.add(a.sprint_id);
-        });
-        if (eligibleSprints[0]?.id) next.add(eligibleSprints[0].id);
-        next.add("carried-over");
-        return next;
-      });
     } catch (err) {
       console.error("Failed to load dashboard data", err);
     } finally {
@@ -372,8 +387,8 @@ export default function RetrospectiveDashboard({
     });
   };
 
-  const sprintOrdering = [...eligibleSprints].sort((a, b) => (a.start_date > b.start_date ? 1 : -1)).map((s) => s.id);
-  const actualCurrentSprintId = sprints[0]?.id || "sprint-24";
+  const sprintOrdering = [...sprints].sort((a, b) => (a.start_date > b.start_date ? 1 : -1)).map((s) => s.id);
+  const actualCurrentSprintId = sprints[0]?.id || "sprint-23";
   const carriedOverActions = getCarriedOverActions(actions, actualCurrentSprintId, sprintOrdering);
 
   const openCount = actions.filter((a) => a.status === "open").length;
@@ -651,25 +666,47 @@ export default function RetrospectiveDashboard({
           </button>
 
           {expandedSprintIds.has("carried-over") && (
-            <div className="p-4 pt-0 space-y-3 border-t border-amber-500/20">
-              {carriedOverActions.map((action) => (
-                <ActionCard
-                  key={action.id}
-                  action={action}
-                  sprints={sprints}
-                  owners={owners}
-                  activeMenuId={activeMenuId}
-                  setActiveMenuId={setActiveMenuId}
-                  onUpdateStatus={handleUpdateStatus}
-                  onUpdateTitleDescription={handleUpdateTitleDescription}
-                  onUpdateOwner={handleUpdateOwner}
-                  onUpdateEstimate={handleUpdateEstimate}
-                  onDelete={handleDeleteAction}
-                  onOpenJira={handleOpenJiraModal}
-                  onOpenProvenance={setProvenanceAction}
-                  isStale={isJiraStale(action)}
-                />
-              ))}
+            <div className="p-4 pt-3 space-y-2 border-t border-amber-500/20">
+              {carriedOverActions.map((action) => {
+                const originSprintName =
+                  sprints.find((s) => s.id === action.sprint_id)?.name || action.sprint_id;
+                return (
+                  <div
+                    key={action.id}
+                    onClick={() => handleScrollToAction(action.sprint_id, action.id)}
+                    className="group flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 p-3 rounded-lg border border-amber-500/20 bg-background/80 hover:bg-amber-500/10 hover:border-amber-500/40 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
+                        {originSprintName}
+                      </span>
+
+                      <span className="text-xs font-semibold text-foreground truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                        {action.title}
+                      </span>
+
+                      {action.jira_key && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                          {action.jira_key}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
+                      {action.owner && (
+                        <span className="text-[11px] font-medium text-foreground/80">
+                          {action.owner}
+                        </span>
+                      )}
+                      {action.estimate_value > 0 && (
+                        <span className="text-[11px]">
+                          {formatEstimateText(action.estimate_value, action.estimate_unit)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -708,12 +745,16 @@ export default function RetrospectiveDashboard({
             return (
               <div
                 key={sprint.id}
-                className="rounded-xl border border-border/60 bg-card overflow-hidden shadow-sm transition-all"
+                className={`rounded-xl border border-border/60 bg-card shadow-sm transition-all relative ${
+                  activeSprintMenuId === sprint.id ? "z-30" : "z-0"
+                }`}
               >
                 {/* Sprint Accordion Header */}
                 <button
                   onClick={() => toggleSprintAccordion(sprint.id)}
-                  className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-1/50 transition-colors"
+                  className={`w-full flex items-center justify-between p-4 text-left hover:bg-surface-1/50 transition-colors ${
+                    isExpanded ? "rounded-t-xl" : "rounded-xl"
+                  }`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="text-muted-foreground">
@@ -740,20 +781,6 @@ export default function RetrospectiveDashboard({
                   </div>
 
                   <div className="flex items-center gap-3 text-xs">
-                    {isExpanded && hasPendingProposals && onReviewSprint && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReviewSprint(sprint.id);
-                        }}
-                        className="h-7 text-xs font-semibold gap-1.5 border-primary/30 text-primary hover:bg-primary/10 shadow-2xs"
-                      >
-                        <Sparkles size={13} /> Actions Review
-                      </Button>
-                    )}
-
                     {sprintActions.length === 0 ? (
                       <span className="text-xs font-medium text-muted-foreground/70 italic">
                         0 actions
@@ -789,12 +816,74 @@ export default function RetrospectiveDashboard({
                         </div>
                       </div>
                     )}
+
+                    {/* Triple-dot Options Menu on far right */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveSprintMenuId(activeSprintMenuId === sprint.id ? null : sprint.id);
+                        }}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-1 transition-colors"
+                        title="Sprint options"
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+
+                      {activeSprintMenuId === sprint.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-9 z-50 w-48 rounded-xl border border-border bg-background shadow-xl py-1 text-xs space-y-0.5"
+                        >
+                          {hasPendingProposals && onReviewSprint && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveSprintMenuId(null);
+                                onReviewSprint(sprint.id);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-1 text-primary font-medium transition-colors"
+                            >
+                              <Sparkles size={14} className="text-primary" />
+                              <span>Actions Review</span>
+                            </button>
+                          )}
+
+                          {matchingRetros.find((r) => r.transcript)?.transcript ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveSprintMenuId(null);
+                                const targetRetro = matchingRetros.find((r) => r.transcript);
+                                setViewingTranscript({
+                                  sprintName: sprint.name,
+                                  transcript: targetRetro!.transcript,
+                                  owner: targetRetro!.meeting_owner || undefined,
+                                });
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-1 text-foreground font-medium transition-colors"
+                            >
+                              <FileText size={14} className="text-muted-foreground" />
+                              <span>View Transcript</span>
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left text-muted-foreground/50 cursor-not-allowed text-xs"
+                            >
+                              <FileText size={14} />
+                              <span>No transcript found</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </button>
 
                 {/* Sprint Accordion Body */}
                 {isExpanded && (
-                  <div className="p-4 pt-2 border-t border-border/30 space-y-3 bg-surface-1/20">
+                  <div className="p-4 pt-2 border-t border-border/30 space-y-3 bg-surface-1/20 rounded-b-xl">
                     {sprintActions.length === 0 ? (
                       <p className="text-xs text-muted-foreground italic py-3 text-center">
                         No action items recorded for this sprint.
@@ -816,6 +905,7 @@ export default function RetrospectiveDashboard({
                           onOpenJira={handleOpenJiraModal}
                           onOpenProvenance={setProvenanceAction}
                           isStale={isJiraStale(action)}
+                          isHighlighted={highlightedActionId === action.id}
                         />
                       ))
                     )}
@@ -1025,6 +1115,71 @@ export default function RetrospectiveDashboard({
           </div>
         </div>
       )}
+
+      {/* View Transcript Modal */}
+      {viewingTranscript && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-border bg-background p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <FileText size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    {viewingTranscript.sprintName} — Meeting Transcript
+                  </h3>
+                  {viewingTranscript.owner && (
+                    <p className="text-xs text-muted-foreground">
+                      Owner: {viewingTranscript.owner}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setViewingTranscript(null)}
+              >
+                <X size={16} />
+              </Button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-border/60 bg-surface-1/40 p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap text-foreground/90 selection:bg-primary/20">
+              {viewingTranscript.transcript}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[11px] text-muted-foreground">
+                {viewingTranscript.transcript.split("\n").filter(Boolean).length} lines · Recorded Retro Transcript
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(viewingTranscript.transcript);
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  }}
+                  className="h-8 text-xs gap-1.5"
+                >
+                  {isCopied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                  {isCopied ? "Copied" : "Copy Transcript"}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setViewingTranscript(null)}
+                  className="h-8 text-xs font-semibold"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1043,6 +1198,7 @@ interface ActionCardProps {
   onOpenJira: (action: TrackedAction) => void;
   onOpenProvenance: (action: TrackedAction) => void;
   isStale: boolean;
+  isHighlighted?: boolean;
 }
 
 function ActionCard({
@@ -1059,6 +1215,7 @@ function ActionCard({
   onOpenJira,
   onOpenProvenance,
   isStale,
+  isHighlighted,
 }: ActionCardProps) {
   const isMenuOpen = activeMenuId === action.id;
 
@@ -1141,7 +1298,14 @@ function ActionCard({
   };
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3 shadow-sm hover:border-border transition-colors relative">
+    <div
+      id={`action-card-${action.id}`}
+      className={`rounded-xl border p-4 space-y-3 shadow-sm transition-all duration-500 relative ${
+        isHighlighted
+          ? "border-amber-500 ring-2 ring-amber-500/50 bg-amber-500/10 shadow-md"
+          : "border-border/50 bg-card hover:border-border"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">

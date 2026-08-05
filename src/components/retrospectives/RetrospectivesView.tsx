@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "../ui/dialog";
-import { Sparkles, Folder, Plus, Brain, LayoutDashboard, Bell } from "lucide-react";
+import { Sparkles, Folder, Plus, Brain, LayoutDashboard, Bell, RotateCcw } from "lucide-react";
 import { Button } from "../ui/button";
 
 interface RetrospectivesViewProps {
@@ -43,6 +43,8 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
   const [showProjectModal, setShowProjectModal] = useState<boolean>(false);
   const [projectName, setProjectName] = useState<string>("");
   const [projectDescription, setProjectDescription] = useState<string>("");
+  const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
 
   const fetchData = async () => {
     try {
@@ -84,6 +86,22 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
       setCurrentProject(created);
     } catch (err) {
       console.error("Failed to create project", err);
+    }
+  };
+
+  const handleResetDemoData = async () => {
+    setIsResetting(true);
+    try {
+      await retroClient.resetDemoData();
+      setCurrentProject(null);
+      setCurrentRetroId(null);
+      setActiveModal("none");
+      await fetchData();
+    } catch (err) {
+      console.error("Failed to reset demo data", err);
+    } finally {
+      setIsResetting(false);
+      setShowResetConfirm(false);
     }
   };
 
@@ -207,6 +225,18 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
             <Brain size={14} /> Insights
           </button>
         </div>
+
+        {/* Reset Demo Data Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowResetConfirm(true)}
+          disabled={isResetting}
+          className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-destructive"
+        >
+          <RotateCcw size={13} className={isResetting ? "animate-spin" : ""} />
+          {isResetting ? "Resetting..." : "Reset Demo"}
+        </Button>
       </div>
 
       {/* Main View Content */}
@@ -308,6 +338,33 @@ export default function RetrospectivesView({ onOpenSettings }: RetrospectivesVie
               onReanalyze={handleReanalyze}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Demo Data Confirmation Dialog */}
+      <Dialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <DialogContent className="max-w-sm p-6">
+          <DialogHeader>
+            <DialogTitle>Reset Demo Data</DialogTitle>
+            <DialogDescription>
+              This will delete all retrospectives, action items, coach topics, and insights, and re-seed the sprint data. Notification settings will be preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button size="sm" variant="outline" onClick={() => setShowResetConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleResetDemoData}
+              disabled={isResetting}
+              className="gap-1.5"
+            >
+              <RotateCcw size={13} className={isResetting ? "animate-spin" : ""} />
+              {isResetting ? "Resetting..." : "Reset All Data"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -20,7 +20,7 @@ import {
   Mail,
   Server,
   Play,
-  ArrowRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -88,6 +88,7 @@ export function NotificationsView({ currentProject, onProjectUpdate }: Notificat
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testSuccessKey, setTestSuccessKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentProject) {
@@ -157,14 +158,28 @@ export function NotificationsView({ currentProject, onProjectUpdate }: Notificat
   const handleTestTrigger = async (key: string, title: string, channel: DeliveryChannel) => {
     if (!currentProject) return;
     setTestingKey(key);
+    setTestSuccessKey(null);
     try {
+      const recipient =
+        channel === "email"
+          ? teamEmails.trim()
+            ? `Email (${teamEmails.trim()})`
+            : "Email (Team Member)"
+          : slackChannelId.trim()
+          ? `Slack (#${slackChannelId.trim()})`
+          : "Slack (#general)";
+
       await retroClient.sendSlack({
         projectId: currentProject.id,
-        recipientName: channel === "email" ? "Team Member (Email)" : "Team Channel (Slack)",
+        recipientName: recipient,
         messageType: key,
-        content: `[TEST TRIGGER] Sample automated dispatch for '${title}' via ${channel.toUpperCase()}.`,
+        content: `[TEST TRIGGER] Sample automated dispatch for '${title}' via ${channel.toUpperCase()}${
+          channel === "email" && senderEmail ? ` (From: ${senderEmail})` : ""
+        }.`,
       });
       await loadSlackLogs(currentProject.id);
+      setTestSuccessKey(key);
+      setTimeout(() => setTestSuccessKey(null), 3000);
     } catch (err) {
       console.error("Failed to trigger test notification", err);
     } finally {
@@ -253,7 +268,7 @@ export function NotificationsView({ currentProject, onProjectUpdate }: Notificat
   ];
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header Banner */}
       <div className="flex items-center justify-between border-b border-border/40 pb-4">
         <div className="space-y-1">
@@ -369,6 +384,7 @@ export function NotificationsView({ currentProject, onProjectUpdate }: Notificat
             const isEnabled = itemSetting.enabled;
             const channel = itemSetting.channel || "slack";
             const isTesting = testingKey === item.key;
+            const isSuccess = testSuccessKey === item.key;
 
             return (
               <div
@@ -394,14 +410,32 @@ export function NotificationsView({ currentProject, onProjectUpdate }: Notificat
                   {/* Test Button */}
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant={isSuccess ? "default" : "outline"}
                     onClick={() => handleTestTrigger(item.key, item.title, channel)}
                     disabled={!isEnabled || isTesting}
-                    className="gap-1.5 text-xs h-8 px-2.5 border-border/60 hover:bg-surface-1 font-medium"
+                    className={`gap-1.5 text-xs h-8 px-2.5 font-medium transition-all ${
+                      isSuccess
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
+                        : "border-border/60 hover:bg-surface-1"
+                    }`}
                     title="Send a sample test notification"
                   >
-                    <Play size={12} className="text-primary fill-primary" />
-                    {isTesting ? "Testing..." : "Test"}
+                    {isTesting ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        Testing...
+                      </>
+                    ) : isSuccess ? (
+                      <>
+                        <CheckCircle2 size={12} className="text-white" />
+                        Sent!
+                      </>
+                    ) : (
+                      <>
+                        <Play size={12} className="text-primary fill-primary" />
+                        Test
+                      </>
+                    )}
                   </Button>
 
                   {/* Channel Toggle (Slack vs Email) - rendered when enabled */}

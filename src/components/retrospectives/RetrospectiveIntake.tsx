@@ -17,6 +17,8 @@ import {
   Sparkles,
   Settings,
   X,
+  Plus,
+  Clock,
 } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -38,7 +40,7 @@ export default function RetrospectiveIntake({
   onAnalysisSuccess,
   onOpenSettings,
 }: RetrospectiveIntakeProps) {
-  const [selectedSprintId, setSelectedSprintId] = useState<string>(sprints[0]?.id || "sprint-24");
+  const [selectedSprintId, setSelectedSprintId] = useState<string>(sprints[0]?.id || "sprint-23");
   const [transcriptText, setTranscriptText] = useState<string>("");
   const [sourceKind, setSourceKind] = useState<"audio" | "text" | "paste">("paste");
   const [audioFileName, setAudioFileName] = useState<string | null>(null);
@@ -78,6 +80,8 @@ export default function RetrospectiveIntake({
     }
   };
 
+  const [showDismissedTopics, setShowDismissedTopics] = useState<boolean>(false);
+
   const handleToggleTopicState = async (topicId: string, currentState: string) => {
     const nextState = currentState === "accepted" ? "suggested" : "accepted";
     try {
@@ -85,6 +89,24 @@ export default function RetrospectiveIntake({
       loadTopicsForSprint(selectedSprintId);
     } catch (err) {
       console.error("Failed to update topic state", err);
+    }
+  };
+
+  const handleDismissTopic = async (topicId: string) => {
+    try {
+      await retroClient.updateTopic(topicId, { state: "dismissed" });
+      loadTopicsForSprint(selectedSprintId);
+    } catch (err) {
+      console.error("Failed to dismiss topic", err);
+    }
+  };
+
+  const handleRestoreTopic = async (topicId: string) => {
+    try {
+      await retroClient.updateTopic(topicId, { state: "suggested" });
+      loadTopicsForSprint(selectedSprintId);
+    } catch (err) {
+      console.error("Failed to restore topic", err);
     }
   };
 
@@ -104,6 +126,7 @@ export default function RetrospectiveIntake({
   // Edit Sprint Metrics Modal state
   const [showEditSprintModal, setShowEditSprintModal] = useState<boolean>(false);
   const [editSprintData, setEditSprintData] = useState<Partial<SprintSnapshot>>({});
+  const [isNewSprint, setIsNewSprint] = useState<boolean>(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -129,6 +152,16 @@ export default function RetrospectiveIntake({
   }, [isAnalyzing]);
 
   const selectedSprint = sprints.find((s) => s.id === selectedSprintId) || sprints[0];
+
+  const isSelectedSprintActive = (() => {
+    if (!selectedSprint) return false;
+    if (sprints[0] && selectedSprint.id === sprints[0].id) return true;
+    if (selectedSprint.end_date) {
+      const endDate = new Date(selectedSprint.end_date);
+      if (endDate > new Date()) return true;
+    }
+    return false;
+  })();
 
   useEffect(() => {
     let isMounted = true;
@@ -174,18 +207,45 @@ export default function RetrospectiveIntake({
     };
   }, [onAnalysisSuccess, retroAnalystMode, retroAnalystProvider, retroAnalystModel, retroReasoningModel, cleanupModel, cleanupProvider, cleanupMode]);
 
+  const handleNewSprintOpen = () => {
+    const nextNum =
+      sprints.reduce((max, s) => {
+        const num = parseInt(s.id.replace(/[^0-9]/g, ""), 10);
+        return isNaN(num) ? max : Math.max(max, num);
+      }, 22) + 1;
+
+    setEditSprintData({
+      id: `sprint-${nextNum}`,
+      name: `Sprint ${nextNum} — Payments`,
+      start_date: new Date().toISOString().split("T")[0],
+      end_date: new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0],
+      committed_points: 40,
+      completed_points: 32,
+      total_issues: 12,
+      completed_issues: 10,
+      blocked_issues: 1,
+      burndown_trend: "on_track",
+      velocity: 35,
+      blockers: "",
+    });
+    setIsNewSprint(true);
+    setShowEditSprintModal(true);
+  };
+
   const handleEditSprintOpen = () => {
     if (selectedSprint) {
       setEditSprintData({ ...selectedSprint });
+      setIsNewSprint(false);
       setShowEditSprintModal(true);
     }
   };
 
   const handleSaveSprintMetrics = async () => {
-    if (!selectedSprint) return;
+    if (!editSprintData.id) return;
     try {
-      await retroClient.updateSprintMetrics(selectedSprint.id, editSprintData);
-      onSprintUpdate();
+      await retroClient.updateSprintMetrics(editSprintData.id, editSprintData);
+      await onSprintUpdate();
+      setSelectedSprintId(editSprintData.id);
       setShowEditSprintModal(false);
     } catch (err: any) {
       setErrorMessage(err.message || "Failed to update sprint metrics");
@@ -289,15 +349,26 @@ export default function RetrospectiveIntake({
           <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Sprint <span className="text-destructive">*</span>
           </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleEditSprintOpen}
-            className="h-7 text-xs gap-1.5 text-primary hover:text-primary/90"
-          >
-            <Edit3 size={13} />
-            Edit metrics
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNewSprintOpen}
+              className="h-7 text-xs gap-1.5 text-primary border-primary/30 hover:bg-primary/10"
+            >
+              <Plus size={13} />
+              New Sprint
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleEditSprintOpen}
+              className="h-7 text-xs gap-1.5 text-primary hover:text-primary/90"
+            >
+              <Edit3 size={13} />
+              Edit metrics
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
@@ -342,7 +413,7 @@ export default function RetrospectiveIntake({
           <div className="flex items-center gap-2">
             <Sparkles className="text-amber-500" size={16} />
             <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-              Step 2: AI Coach Discussion Agenda
+              Coach Suggested Agenda
             </h4>
           </div>
           <Button
@@ -374,229 +445,289 @@ export default function RetrospectiveIntake({
           </div>
         ) : (
           <div className="space-y-2">
-            {coachTopics.map((topic) => (
-              <div
-                key={topic.id}
-                className={`p-3 rounded-lg border text-xs space-y-1 transition-all ${
-                  topic.state === "accepted"
-                    ? "border-emerald-500/40 bg-emerald-500/10"
-                    : "border-border/50 bg-background"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="space-y-0.5 min-w-0">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      {topic.state === "accepted" && <CheckCircle2 size={14} className="text-emerald-500" />}
-                      {topic.title}
-                    </span>
-                    <p className="text-muted-foreground">{topic.rationale}</p>
+            {coachTopics
+              .filter((topic) => showDismissedTopics || topic.state !== "dismissed")
+              .map((topic) => (
+                <div
+                  key={topic.id}
+                  className={`p-3 rounded-lg border text-xs space-y-1 transition-all ${
+                    topic.state === "dismissed"
+                      ? "border-border/30 bg-background/40 opacity-60"
+                      : topic.state === "accepted"
+                      ? "border-emerald-500/40 bg-emerald-500/10"
+                      : "border-border/50 bg-background"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        {topic.state === "accepted" && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
+                        <span className={topic.state === "dismissed" ? "line-through text-muted-foreground" : ""}>
+                          {topic.title}
+                        </span>
+                      </span>
+                      <p className="text-muted-foreground">{topic.rationale}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {topic.state === "dismissed" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRestoreTopic(topic.id)}
+                          className="h-6 text-[11px] px-2 font-semibold text-muted-foreground hover:text-foreground"
+                        >
+                          Restore
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant={topic.state === "accepted" ? "default" : "outline"}
+                            onClick={() => handleToggleTopicState(topic.id, topic.state)}
+                            className={`h-6 text-[11px] px-2 font-semibold ${
+                              topic.state === "accepted"
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {topic.state === "accepted" ? "Accepted" : "Accept Topic"}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleDismissTopic(topic.id)}
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            title="Dismiss topic"
+                          >
+                            <X size={13} />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
+                </div>
+              ))}
+
+            {coachTopics.some((t) => t.state === "dismissed") && (
+              <div className="pt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowDismissedTopics((prev) => !prev)}
+                  className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showDismissedTopics
+                    ? "Hide dismissed topics"
+                    : `Show ${coachTopics.filter((t) => t.state === "dismissed").length} dismissed topic${
+                        coachTopics.filter((t) => t.state === "dismissed").length === 1 ? "" : "s"
+                      }`}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Active Sprint Notice vs Transcript Section */}
+      {isSelectedSprintActive ? (
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-5 text-center space-y-2 shadow-2xs">
+          <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400 font-semibold text-sm">
+            <Clock size={16} />
+            <span>{selectedSprint?.name} is currently in progress</span>
+          </div>
+          <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+            This sprint is active through <strong>{selectedSprint?.end_date || "end of sprint"}</strong>. Retrospective transcript upload and analysis will open once this sprint has completed.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Transcript Source */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Transcript Source
+            </label>
+            {audioFileName ? (
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <FileText size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground truncate">
+                        {audioFileName}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                        {sourceKind === "audio"
+                          ? "Audio File"
+                          : audioFileName?.toLowerCase().endsWith(".vtt")
+                          ? "VTT Transcript"
+                          : "Text File"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Ready for retrospective analysis
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <label className="cursor-pointer">
+                    <span className="inline-flex items-center justify-center h-7 px-2.5 rounded-md border border-border/60 bg-background text-foreground text-xs font-medium hover:bg-surface-1 transition-colors">
+                      Change
+                    </span>
+                    <input
+                      type="file"
+                      accept=".txt,.vtt,audio/*"
+                      onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                      className="hidden"
+                    />
+                  </label>
                   <Button
-                    size="sm"
-                    variant={topic.state === "accepted" ? "default" : "outline"}
-                    onClick={() => handleToggleTopicState(topic.id, topic.state)}
-                    className={`h-6 text-[11px] px-2 font-semibold ${
-                      topic.state === "accepted"
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    title="Remove file"
+                    onClick={() => {
+                      setAudioFileName(null);
+                      setAudioSourcePath(null);
+                      setTranscriptText("");
+                      setSourceKind("paste");
+                    }}
                   >
-                    {topic.state === "accepted" ? "Accepted" : "Accept Topic"}
+                    <X size={14} />
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Transcript Source */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Transcript Source
-        </label>
-        {audioFileName ? (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 flex items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <FileText size={18} />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground truncate">
-                    {audioFileName}
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
-                    {sourceKind === "audio"
-                      ? "Audio File"
-                      : audioFileName?.toLowerCase().endsWith(".vtt")
-                      ? "VTT Transcript"
-                      : "Text File"}
-                  </span>
+            ) : (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleFileDrop}
+                className="border-2 border-dashed border-border/50 hover:border-primary/50 rounded-xl p-6 text-center bg-surface-1/20 transition-colors flex flex-col items-center justify-center gap-2"
+              >
+                <UploadCloud className="w-8 h-8 text-muted-foreground" />
+                <div className="text-sm font-medium text-foreground">
+                  Drop audio (.mp3, .wav, .m4a) or transcript (.txt, .vtt) here
                 </div>
-                <p className="text-xs text-muted-foreground truncate">
-                  Ready for retrospective analysis
+                <p className="text-xs text-muted-foreground">
+                  Audio is transcribed locally. Transcript stays entirely on your machine.
                 </p>
+                <div className="flex items-center gap-3 mt-2">
+                  <label className="cursor-pointer">
+                    <span className="inline-flex items-center justify-center h-8 px-3 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
+                      Browse file
+                    </span>
+                    <input
+                      type="file"
+                      accept=".txt,.vtt,audio/*"
+                      onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Transcript Textarea */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Transcript (editable)
+            </label>
+            <textarea
+              value={transcriptText}
+              onChange={(e) => {
+                setTranscriptText(e.target.value);
+                setSourceKind("paste");
+              }}
+              placeholder="Paste or edit the retrospective discussion transcript here..."
+              rows={10}
+              className="w-full rounded-xl border border-border/60 bg-background p-4 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary leading-relaxed"
+            />
+          </div>
+
+          {/* Model Status / Warning */}
+          {!isCheckingModel && modelStatus && !modelStatus.available && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-1">
+                <h4 className="font-semibold text-amber-600 dark:text-amber-400">
+                  No reasoning model configured
+                </h4>
+                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                  No valid model is selected or available for Retrospective Analyst. Please configure a local or cloud provider in settings.
+                </p>
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onOpenSettings}
+                    className="h-7 text-xs border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 gap-1.5"
+                  >
+                    <Settings size={12} /> Open model settings
+                  </Button>
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="flex items-center gap-2 shrink-0">
-              <label className="cursor-pointer">
-                <span className="inline-flex items-center justify-center h-7 px-2.5 rounded-md border border-border/60 bg-background text-foreground text-xs font-medium hover:bg-surface-1 transition-colors">
-                  Change
-                </span>
-                <input
-                  type="file"
-                  accept=".txt,.vtt,audio/*"
-                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                  className="hidden"
-                />
-              </label>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                title="Remove file"
-                onClick={() => {
-                  setAudioFileName(null);
-                  setAudioSourcePath(null);
-                  setTranscriptText("");
-                  setSourceKind("paste");
-                }}
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleFileDrop}
-            className="border-2 border-dashed border-border/50 hover:border-primary/50 rounded-xl p-6 text-center bg-surface-1/20 transition-colors flex flex-col items-center justify-center gap-2"
-          >
-            <UploadCloud className="w-8 h-8 text-muted-foreground" />
-            <div className="text-sm font-medium text-foreground">
-              Drop audio (.mp3, .wav, .m4a) or transcript (.txt, .vtt) here
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Audio is transcribed locally. Transcript stays entirely on your machine.
-            </p>
-            <div className="flex items-center gap-3 mt-2">
-              <label className="cursor-pointer">
-                <span className="inline-flex items-center justify-center h-8 px-3 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
-                  Browse file
-                </span>
-                <input
-                  type="file"
-                  accept=".txt,.vtt,audio/*"
-                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Transcript Textarea */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Transcript (editable)
-        </label>
-        <textarea
-          value={transcriptText}
-          onChange={(e) => {
-            setTranscriptText(e.target.value);
-            setSourceKind("paste");
-          }}
-          placeholder="Paste or edit the retrospective discussion transcript here..."
-          rows={10}
-          className="w-full rounded-xl border border-border/60 bg-background p-4 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary leading-relaxed"
-        />
-      </div>
-
-      {/* Model Status / Warning */}
-      {!isCheckingModel && modelStatus && !modelStatus.available && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <h4 className="font-semibold text-amber-600 dark:text-amber-400">
-              No reasoning model configured
-            </h4>
-            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-              No valid model is selected or available for Retrospective Analyst. Please configure a local or cloud provider in settings.
-            </p>
-            <div className="pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenSettings}
-                className="h-7 text-xs border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 gap-1.5"
-              >
-                <Settings size={12} /> Open model settings
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Model Info & Action Button */}
-      <div className="space-y-3 pt-2">
-        {!isAnalyzing ? (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
-              <Sparkles size={14} className="text-primary" />
-              <span>
-                Model:{" "}
-                <strong className="text-foreground font-medium">
-                  {modelStatus?.modelId ||
-                    (retroAnalystMode === "providers" || retroAnalystProvider === "gemini"
-                      ? `Google Gemini${retroAnalystModel ? ` (${retroAnalystModel})` : ""}`
-                      : "Qwen2.5 7B (local)")}
-                </strong>
-              </span>
-            </div>
-
-            <Button
-              onClick={handleStartAnalysis}
-              disabled={!modelStatus?.available || !transcriptText.trim()}
-              className="w-full sm:w-auto h-10 px-6 font-medium gap-2 shadow-sm"
-            >
-              <Sparkles size={16} /> Analyze retrospective
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 text-primary animate-spin" />
-                  <span className="text-sm font-semibold text-foreground">
-                    Analyzing retrospective…
+          {/* Model Info & Action Button */}
+          <div className="space-y-3 pt-2">
+            {!isAnalyzing ? (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Sparkles size={14} className="text-primary" />
+                  <span>
+                    Model:{" "}
+                    <strong className="text-foreground font-medium">
+                      {modelStatus?.modelId ||
+                        (retroAnalystMode === "providers" || retroAnalystProvider === "gemini"
+                          ? `Google Gemini${retroAnalystModel ? ` (${retroAnalystModel})` : ""}`
+                          : "Qwen2.5 7B (local)")}
+                    </strong>
                   </span>
                 </div>
+
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCancelAnalysis}
-                  className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                  onClick={handleStartAnalysis}
+                  disabled={!modelStatus?.available || !transcriptText.trim()}
+                  className="w-full sm:w-auto h-10 px-6 font-medium gap-2 shadow-sm"
                 >
-                  Cancel
+                  <Sparkles size={16} /> Analyze retrospective
                 </Button>
               </div>
-              {progressState && (
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>
-                      {progressState.stage === "parsing" ? "Repairing JSON schema..." : "Processing chunk"}
-                    </span>
-                    <span>
-                      Chunk {progressState.chunkIndex || 1} of {progressState.chunkCount || 1}
-                    </span>
+            ) : (
+              <div className="space-y-2">
+                <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                      <span className="text-sm font-semibold text-foreground">
+                        Analyzing retrospective…
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCancelAnalysis}
+                      className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      Cancel
+                    </Button>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-border/40 overflow-hidden">
-                    <div
-                      className="h-full bg-primary transition-all duration-300"
+                  {progressState && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>
+                          {progressState.stage === "parsing" ? "Repairing JSON schema..." : "Processing chunk"}
+                        </span>
+                        <span>
+                          Chunk {progressState.chunkIndex || 1} of {progressState.chunkCount || 1}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-border/40 overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300"
                       style={{
                         width: `${Math.round(
                           ((progressState.chunkIndex || 1) / (progressState.chunkCount || 1)) * 100
@@ -623,14 +754,18 @@ export default function RetrospectiveIntake({
           </div>
         )}
       </div>
+        </>
+      )}
       <div ref={bottomRef} />
 
-      {/* Edit Sprint Metrics Modal */}
+      {/* Edit / New Sprint Metrics Modal */}
       {showEditSprintModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">Edit Sprint Metrics</h3>
+              <h3 className="text-base font-semibold">
+                {isNewSprint ? "Create New Sprint" : "Edit Sprint Metrics"}
+              </h3>
               <Button
                 variant="ghost"
                 size="icon"
@@ -640,86 +775,130 @@ export default function RetrospectiveIntake({
                 <X size={14} />
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
+
+            <div className="space-y-3 text-xs">
               <div>
-                <label className="text-muted-foreground">Committed Points</label>
+                <label className="text-muted-foreground font-medium">Sprint Name</label>
                 <input
-                  type="number"
-                  value={editSprintData.committed_points || 0}
+                  type="text"
+                  value={editSprintData.name || ""}
                   onChange={(e) =>
-                    setEditSprintData({ ...editSprintData, committed_points: Number(e.target.value) })
+                    setEditSprintData({ ...editSprintData, name: e.target.value })
                   }
-                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-sm"
+                  placeholder="e.g. Sprint 23 — Payments"
+                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
                 />
               </div>
-              <div>
-                <label className="text-muted-foreground">Completed Points</label>
-                <input
-                  type="number"
-                  value={editSprintData.completed_points || 0}
-                  onChange={(e) =>
-                    setEditSprintData({ ...editSprintData, completed_points: Number(e.target.value) })
-                  }
-                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-sm"
-                />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-muted-foreground font-medium">Start Date</label>
+                  <input
+                    type="date"
+                    value={editSprintData.start_date || ""}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, start_date: e.target.value })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground font-medium">End Date</label>
+                  <input
+                    type="date"
+                    value={editSprintData.end_date || ""}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, end_date: e.target.value })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-muted-foreground">Total Issues</label>
-                <input
-                  type="number"
-                  value={editSprintData.total_issues || 0}
-                  onChange={(e) =>
-                    setEditSprintData({ ...editSprintData, total_issues: Number(e.target.value) })
-                  }
-                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-sm"
-                />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-muted-foreground font-medium">Committed Points</label>
+                  <input
+                    type="number"
+                    value={editSprintData.committed_points || 0}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, committed_points: Number(e.target.value) })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground font-medium">Completed Points</label>
+                  <input
+                    type="number"
+                    value={editSprintData.completed_points || 0}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, completed_points: Number(e.target.value) })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground font-medium">Total Issues</label>
+                  <input
+                    type="number"
+                    value={editSprintData.total_issues || 0}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, total_issues: Number(e.target.value) })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground font-medium">Completed Issues</label>
+                  <input
+                    type="number"
+                    value={editSprintData.completed_issues || 0}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, completed_issues: Number(e.target.value) })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground font-medium">Blocked Issues</label>
+                  <input
+                    type="number"
+                    value={editSprintData.blocked_issues || 0}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, blocked_issues: Number(e.target.value) })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground font-medium">Burndown Trend</label>
+                  <select
+                    value={editSprintData.burndown_trend || "on_track"}
+                    onChange={(e) =>
+                      setEditSprintData({ ...editSprintData, burndown_trend: e.target.value })
+                    }
+                    className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-xs"
+                  >
+                    <option value="on_track">on_track</option>
+                    <option value="behind trend">behind trend</option>
+                    <option value="ahead of trend">ahead of trend</option>
+                  </select>
+                </div>
               </div>
+
               <div>
-                <label className="text-muted-foreground">Completed Issues</label>
-                <input
-                  type="number"
-                  value={editSprintData.completed_issues || 0}
-                  onChange={(e) =>
-                    setEditSprintData({ ...editSprintData, completed_issues: Number(e.target.value) })
-                  }
-                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-sm"
+                <label className="text-muted-foreground font-medium">Blockers Description</label>
+                <textarea
+                  value={editSprintData.blockers || ""}
+                  onChange={(e) => setEditSprintData({ ...editSprintData, blockers: e.target.value })}
+                  rows={2}
+                  placeholder="Describe any sprint blockers..."
+                  className="w-full p-2 mt-1 rounded border border-border bg-surface-1 text-xs"
                 />
-              </div>
-              <div>
-                <label className="text-muted-foreground">Blocked Issues</label>
-                <input
-                  type="number"
-                  value={editSprintData.blocked_issues || 0}
-                  onChange={(e) =>
-                    setEditSprintData({ ...editSprintData, blocked_issues: Number(e.target.value) })
-                  }
-                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-muted-foreground">Burndown Trend</label>
-                <select
-                  value={editSprintData.burndown_trend || "on_track"}
-                  onChange={(e) =>
-                    setEditSprintData({ ...editSprintData, burndown_trend: e.target.value })
-                  }
-                  className="w-full h-8 px-2 mt-1 rounded border border-border bg-surface-1 text-sm"
-                >
-                  <option value="on_track">on_track</option>
-                  <option value="behind trend">behind trend</option>
-                  <option value="ahead of trend">ahead of trend</option>
-                </select>
               </div>
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Blockers Description</label>
-              <textarea
-                value={editSprintData.blockers || ""}
-                onChange={(e) => setEditSprintData({ ...editSprintData, blockers: e.target.value })}
-                rows={2}
-                className="w-full p-2 mt-1 rounded border border-border bg-surface-1 text-xs"
-              />
-            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <Button
                 variant="outline"
@@ -729,7 +908,7 @@ export default function RetrospectiveIntake({
                 Cancel
               </Button>
               <Button size="sm" onClick={handleSaveSprintMetrics}>
-                Save Metrics
+                {isNewSprint ? "Create Sprint" : "Save Metrics"}
               </Button>
             </div>
           </div>

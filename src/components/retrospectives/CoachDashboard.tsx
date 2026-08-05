@@ -91,7 +91,7 @@ export function CoachDashboard({ currentProject, retrosCount }: CoachDashboardPr
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto">
       {/* Streamlined Performance Summary Bar */}
       <div className="rounded-xl border border-border/50 bg-card p-4 flex flex-wrap items-center justify-between gap-4 shadow-xs">
         <div className="flex items-center gap-3">

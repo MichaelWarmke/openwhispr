@@ -106,8 +106,8 @@ function runRetroMigrations(db) {
         `);
 
         stmt.run(
-          "sprint-24",
-          "Sprint 24 — Payments",
+          "sprint-23",
+          "Sprint 23 — Payments",
           "2026-07-08",
           "2026-07-19",
           40,
@@ -121,25 +121,10 @@ function runRetroMigrations(db) {
         );
 
         stmt.run(
-          "sprint-23",
-          "Sprint 23 — Payments",
-          "2026-06-24",
-          "2026-07-05",
-          38,
-          35,
-          12,
-          11,
-          1,
-          "on trend",
-          35,
-          "Staging database migration"
-        );
-
-        stmt.run(
           "sprint-22",
           "Sprint 22 — Checkout",
-          "2026-06-10",
-          "2026-06-21",
+          "2026-06-24",
+          "2026-07-05",
           36,
           36,
           10,
@@ -148,6 +133,36 @@ function runRetroMigrations(db) {
           "ahead of trend",
           36,
           ""
+        );
+
+        stmt.run(
+          "sprint-21",
+          "Sprint 21 — Onboarding",
+          "2026-06-10",
+          "2026-06-21",
+          32,
+          26,
+          11,
+          8,
+          3,
+          "behind trend",
+          26,
+          "Onboarding flow QA handoff delays, Flaky integration test suite still intermittent"
+        );
+
+        stmt.run(
+          "sprint-20",
+          "Sprint 20 — Onboarding",
+          "2026-05-27",
+          "2026-06-07",
+          34,
+          22,
+          12,
+          7,
+          4,
+          "behind trend",
+          22,
+          "CI pipeline flaky tests blocking merges, Unclear ownership on onboarding API endpoints"
         );
       }
 
@@ -317,6 +332,9 @@ class RetroRepository {
 
   async updateSprintMetrics(sprintId, metrics) {
     const {
+      name,
+      start_date,
+      end_date,
       committed_points,
       completed_points,
       total_issues,
@@ -325,34 +343,70 @@ class RetroRepository {
       burndown_trend,
       velocity,
       blockers,
+      project_id,
     } = metrics;
 
-    this.db
-      .prepare(`
-        UPDATE sprint_snapshots SET
-          committed_points = ?,
-          completed_points = ?,
-          total_issues = ?,
-          completed_issues = ?,
-          blocked_issues = ?,
-          burndown_trend = ?,
-          velocity = ?,
-          blockers = ?,
-          is_user_edited = 1,
-          updated_at = datetime('now')
-        WHERE id = ?
-      `)
-      .run(
-        committed_points ?? 0,
-        completed_points ?? 0,
-        total_issues ?? 0,
-        completed_issues ?? 0,
-        blocked_issues ?? 0,
-        burndown_trend || "on_track",
-        velocity ?? 0,
-        blockers || "",
-        sprintId
-      );
+    const existing = this.db.prepare("SELECT id FROM sprint_snapshots WHERE id = ?").get(sprintId);
+
+    if (!existing) {
+      const defaultProjectId = project_id || "proj-default-gen-eng";
+      const sprintName = name || `Sprint ${sprintId.replace(/[^0-9]/g, "") || "New"}`;
+      this.db
+        .prepare(`
+          INSERT INTO sprint_snapshots (
+            id, name, start_date, end_date, committed_points, completed_points,
+            total_issues, completed_issues, blocked_issues, burndown_trend, velocity, blockers, is_user_edited, project_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        `)
+        .run(
+          sprintId,
+          sprintName,
+          start_date || new Date().toISOString().split("T")[0],
+          end_date || new Date().toISOString().split("T")[0],
+          committed_points ?? 0,
+          completed_points ?? 0,
+          total_issues ?? 0,
+          completed_issues ?? 0,
+          blocked_issues ?? 0,
+          burndown_trend || "on_track",
+          velocity ?? 0,
+          blockers || "",
+          defaultProjectId
+        );
+    } else {
+      this.db
+        .prepare(`
+          UPDATE sprint_snapshots SET
+            name = COALESCE(?, name),
+            start_date = COALESCE(?, start_date),
+            end_date = COALESCE(?, end_date),
+            committed_points = ?,
+            completed_points = ?,
+            total_issues = ?,
+            completed_issues = ?,
+            blocked_issues = ?,
+            burndown_trend = ?,
+            velocity = ?,
+            blockers = ?,
+            is_user_edited = 1,
+            updated_at = datetime('now')
+          WHERE id = ?
+        `)
+        .run(
+          name || null,
+          start_date || null,
+          end_date || null,
+          committed_points ?? 0,
+          completed_points ?? 0,
+          total_issues ?? 0,
+          completed_issues ?? 0,
+          blocked_issues ?? 0,
+          burndown_trend || "on_track",
+          velocity ?? 0,
+          blockers || "",
+          sprintId
+        );
+    }
 
     return this.getSprintSnapshot(sprintId);
   }
@@ -1008,6 +1062,173 @@ class RetroRepository {
     `).run(id, project_id, recipient_name, recipient_slack_id || '', message_type, message_content, status || 'sent');
     const row = this.db.prepare("SELECT * FROM coach_slack_notifications WHERE id = ?").get(id);
     return Promise.resolve(row);
+  }
+
+  async resetDemoData() {
+    const txn = this.db.transaction(() => {
+      // Preserve notification settings
+      const existingProject = this.db.prepare("SELECT notification_settings FROM projects WHERE id = 'proj-default-gen-eng'").get();
+      const savedNotificationSettings = existingProject?.notification_settings || '{}';
+
+      // Clear all retro data (order matters for foreign keys - child tables first)
+      this.db.exec(`DELETE FROM coach_slack_notifications`);
+      this.db.exec(`DELETE FROM coach_topic_outcomes`);
+      this.db.exec(`DELETE FROM coach_insights`);
+      this.db.exec(`DELETE FROM coach_topics`);
+      this.db.exec(`DELETE FROM retro_tracked_actions`);
+      this.db.exec(`DELETE FROM retro_proposals`);
+      this.db.exec(`DELETE FROM retrospectives`);
+      this.db.exec(`DELETE FROM sprint_snapshots`);
+      this.db.exec(`DELETE FROM projects`);
+
+      const defaultProjectId = "proj-default-gen-eng";
+
+      // 1. Re-seed default project with preserved notification settings FIRST
+      this.db.prepare(`
+        INSERT INTO projects (id, name, project_id, slack_channel_id, description, notification_settings)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        defaultProjectId,
+        "General Engineering",
+        "PROJ-GEN-ENG",
+        "C012345678",
+        "Default engineering team project",
+        savedNotificationSettings
+      );
+
+      // 2. Re-seed sprint snapshots SECOND (referencing defaultProjectId)
+      const sprintStmt = this.db.prepare(`
+        INSERT INTO sprint_snapshots (
+          id, name, start_date, end_date, committed_points, completed_points,
+          total_issues, completed_issues, blocked_issues, burndown_trend, velocity, blockers, project_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      sprintStmt.run("sprint-23", "Sprint 23 — Payments", "2026-07-08", "2026-07-19", 40, 29, 14, 10, 3, "behind trend", 32, "PR review delays on API gateway, Auth service deployment lock", defaultProjectId);
+      sprintStmt.run("sprint-22", "Sprint 22 — Checkout", "2026-06-24", "2026-07-05", 36, 36, 10, 10, 0, "ahead of trend", 36, "", defaultProjectId);
+      sprintStmt.run("sprint-21", "Sprint 21 — Onboarding", "2026-06-10", "2026-06-21", 32, 26, 11, 8, 3, "behind trend", 26, "Onboarding flow QA handoff delays, Flaky integration test suite still intermittent", defaultProjectId);
+      sprintStmt.run("sprint-20", "Sprint 20 — Onboarding", "2026-05-27", "2026-06-07", 34, 22, 12, 7, 4, "behind trend", 22, "CI pipeline flaky tests blocking merges, Unclear ownership on onboarding API endpoints", defaultProjectId);
+
+      // Re-seed Retrospectives for Sprints 20 and 21
+      const retroStmt = this.db.prepare(`
+        INSERT INTO retrospectives (id, title, sprint_id, project_id, transcript, source_kind, meeting_owner, processing_state, analysis_run_count, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      retroStmt.run(
+        "retro-sprint-20",
+        "Sprint 20 Retrospective — Onboarding",
+        "sprint-20",
+        defaultProjectId,
+        `Jordan: Welcome everyone to the Sprint 20 retrospective. It was a tough sprint — we only finished 22 of 34 committed points. Let's start with what went wrong.\nAlex: The CI pipeline flaky integration tests hit us hard. Merges were constantly blocked because test runs failed randomly.\nSarah: Also, nobody was clear on who owned the onboarding API endpoints. When a bug came up, it bounced between Alex and Marcus for two days.\nMarcus: We need clear service ownership. I'll take explicit ownership of the Onboarding API endpoints.\nJordan: Great. Alex, can you look into why the CI integration test suite is flaky?\nAlex: Yeah, I'll investigate the CI test container memory limits and flaky test runs.\nSarah: Let's also set up a team SLA for PR code reviews so pull requests don't sit in review forever.\nJordan: Good idea. Sarah will draft the PR review SLA proposal.`,
+        "paste",
+        "Jordan Smith",
+        "completed",
+        1,
+        "2026-06-08 10:00:00"
+      );
+
+      retroStmt.run(
+        "retro-sprint-21",
+        "Sprint 21 Retrospective — Onboarding",
+        "sprint-21",
+        defaultProjectId,
+        `Sarah: Sprint 21 retro. We hit 26 points out of 32 committed, which is an improvement over Sprint 20!\nMarcus: The onboarding API endpoint documentation really helped. I handled all incoming endpoint requests smoothly.\nAlex: But the QA handoff process was really bumpy. QA didn't get build artifacts until Thursday afternoon, which created a massive testing bottleneck.\nJordan: We should automate the QA staging deploy as soon as a PR lands in main.\nSarah: Excellent suggestion. Jordan, will you build the automated staging deploy pipeline step?\nJordan: Yes, I can set that up in GitHub Actions.\nAlex: Also, the staging database config drifted from production during the migration test. We need automated config validation.\nMarcus: I can own the staging config validation check script.`,
+        "paste",
+        "Sarah Jenkins",
+        "completed",
+        1,
+        "2026-06-22 10:00:00"
+      );
+
+      // Re-seed proposals & tracked actions for Sprints 20, 21, 22
+      const propStmt = this.db.prepare(`
+        INSERT INTO retro_proposals (id, retrospective_id, title, description, basis, source, state, dedup_key, suggested_owner, suggested_estimate_value, suggested_estimate_unit)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const actionStmt = this.db.prepare(`
+        INSERT INTO retro_tracked_actions (id, proposal_id, retrospective_id, sprint_id, title, description, original_title, original_description, source, owner, owner_normalized, estimate_value, estimate_unit, estimate_minutes, status, jira_key, jira_creation_state, jira_payload_snapshot)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Sprint 20 Actions
+      propStmt.run("prop-20-1", "retro-sprint-20", "Audit and stabilize flaky CI integration test suite", "Investigate memory limits and intermittent test failures in CI runner", "Transcript discussion", "explicit", "accepted", "audit and stabilize flaky ci integration test suite", "Alex Chen", 4, "hours");
+      actionStmt.run("act-20-1", "prop-20-1", "retro-sprint-20", "sprint-20", "Audit and stabilize flaky CI integration test suite", "Investigate memory limits and intermittent test failures in CI runner", "Audit and stabilize flaky CI integration test suite", "Investigate memory limits and intermittent test failures in CI runner", "explicit", "Alex Chen", "alex chen", 4, "hours", 240, "completed", "AGILE-1001", "created", '{"key":"AGILE-1001","summary":"Audit and stabilize flaky CI integration test suite"}');
+
+      propStmt.run("prop-20-2", "retro-sprint-20", "Document ownership and SLA for Onboarding API endpoints", "Assign explicit component owner to resolve bounce-around bug reports", "Coach analysis", "coach", "accepted", "document ownership and sla for onboarding api endpoints", "Marcus Vance", 2, "hours");
+      actionStmt.run("act-20-2", "prop-20-2", "retro-sprint-20", "sprint-20", "Document ownership and SLA for Onboarding API endpoints", "Assign explicit component owner to resolve bounce-around bug reports", "Document ownership and SLA for Onboarding API endpoints", "Assign explicit component owner to resolve bounce-around bug reports", "coach", "Marcus Vance", "marcus vance", 2, "hours", 120, "completed", null, null, null);
+
+      propStmt.run("prop-20-3", "retro-sprint-20", "Draft initial PR review response time SLA (24h target)", "Establish team SLA to ensure code reviews happen within 24 hours", "Transcript discussion", "explicit", "accepted", "draft initial pr review response time sla (24h target)", "Sarah Jenkins", 1, "days");
+      actionStmt.run("act-20-3", "prop-20-3", "retro-sprint-20", "sprint-20", "Draft initial PR review response time SLA (24h target)", "Establish team SLA to ensure code reviews happen within 24 hours", "Draft initial PR review response time SLA (24h target)", "Establish team SLA to ensure code reviews happen within 24 hours", "explicit", "Sarah Jenkins", "sarah jenkins", 1, "days", 480, "open", "AGILE-1002", "created", '{"key":"AGILE-1002","summary":"Draft initial PR review response time SLA (24h target)"}');
+
+      // Sprint 21 Actions
+      propStmt.run("prop-21-1", "retro-sprint-21", "Automate QA staging deployment in CI/CD pipeline on main branch merge", "Deploy automatically to staging upon PR merge to eliminate QA handoff delays", "Transcript discussion", "explicit", "accepted", "automate qa staging deployment in ci/cd pipeline on main branch merge", "Jordan Smith", 1, "days");
+      actionStmt.run("act-21-1", "prop-21-1", "retro-sprint-21", "sprint-21", "Automate QA staging deployment in CI/CD pipeline on main branch merge", "Deploy automatically to staging upon PR merge to eliminate QA handoff delays", "Automate QA staging deployment in CI/CD pipeline on main branch merge", "Deploy automatically to staging upon PR merge to eliminate QA handoff delays", "explicit", "Jordan Smith", "jordan smith", 1, "days", 480, "completed", null, null, null);
+
+      propStmt.run("prop-21-2", "retro-sprint-21", "Implement staging vs production database configuration drift validation script", "Automated check to ensure staging database schema matches production", "Coach analysis", "coach", "accepted", "implement staging vs production database configuration drift validation script", "Marcus Vance", 4, "hours");
+      actionStmt.run("act-21-2", "prop-21-2", "retro-sprint-21", "sprint-21", "Implement staging vs production database configuration drift validation script", "Automated check to ensure staging database schema matches production", "Implement staging vs production database configuration drift validation script", "Automated check to ensure staging database schema matches production", "coach", "Marcus Vance", "marcus vance", 4, "hours", 240, "completed", "AGILE-1003", "created", '{"key":"AGILE-1003","summary":"Implement staging vs production database configuration drift validation script"}');
+
+      propStmt.run("prop-21-3", "retro-sprint-21", "Establish QA handoff checklist and definition of ready for testing", "Document requirements before tickets transition to QA testing", "Transcript discussion", "explicit", "accepted", "establish qa handoff checklist and definition of ready for testing", "Sarah Jenkins", 2, "hours");
+      actionStmt.run("act-21-3", "prop-21-3", "retro-sprint-21", "sprint-21", "Establish QA handoff checklist and definition of ready for testing", "Document requirements before tickets transition to QA testing", "Establish QA handoff checklist and definition of ready for testing", "Document requirements before tickets transition to QA testing", "explicit", "Sarah Jenkins", "sarah jenkins", 2, "hours", 120, "completed", null, null, null);
+
+      // Re-seed coach topics for Sprints 20, 21, 22
+      const topicStmt = this.db.prepare(`
+        INSERT INTO coach_topics (id, project_id, sprint_id, title, rationale, category, priority, state)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      topicStmt.run("topic-20-1", defaultProjectId, "sprint-20", "CI Pipeline Flakiness & Test Memory Allocation", "Flaky integration tests caused 4 blocked issues and velocity drop", "metric_driven", 1, "accepted");
+      topicStmt.run("topic-20-2", defaultProjectId, "sprint-20", "Onboarding API Endpoint Service Ownership", "Unclear ownership created multi-day resolution delays on API bugs", "blind_spot", 2, "accepted");
+
+      topicStmt.run("topic-21-1", defaultProjectId, "sprint-21", "Automated QA Deployment & Handoff Pipeline", "QA handoff bottleneck delayed testing until end of sprint", "metric_driven", 1, "accepted");
+      topicStmt.run("topic-21-2", defaultProjectId, "sprint-21", "Staging Database Drift Prevention", "Configuration mismatch between staging and production during migration", "recurring", 2, "accepted");
+
+      topicStmt.run("topic-22-1", defaultProjectId, "sprint-22", "PR Size Optimization & Fast Review SLAs", "Keeping PR size under 300 LOC accelerated review turnaround", "best_practice", 1, "accepted");
+      topicStmt.run("topic-22-2", defaultProjectId, "sprint-22", "Sustaining 100% Completion Velocity", "Analyzing team factors behind zero-blocker, 36/36 point sprint completion", "metric_driven", 2, "accepted");
+
+      // Re-seed coach insights
+      const insightStmt = this.db.prepare(`
+        INSERT INTO coach_insights (id, project_id, insight_type, title, description, confidence, related_sprint_ids)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insightStmt.run(
+        "insight-1",
+        defaultProjectId,
+        "recurring_issue",
+        "PR Review Bottleneck Pattern",
+        "PR review delays on API gateway reviews appeared as blockers in 3 of the last 4 sprints. Team velocity improves by 24% when code review SLA is explicitly discussed.",
+        0.88,
+        JSON.stringify(["sprint-20", "sprint-21", "sprint-24"])
+      );
+
+      insightStmt.run(
+        "insight-2",
+        defaultProjectId,
+        "improving_trend",
+        "Action Item Completion Arc",
+        "Action item completion rate increased from 40% to 75% over recent sprints since owner attribution was enforced in retro intake.",
+        0.92,
+        JSON.stringify(["sprint-20", "sprint-21", "sprint-22"])
+      );
+
+      insightStmt.run(
+        "insight-3",
+        defaultProjectId,
+        "blind_spot",
+        "Testing & QA Blind Spot",
+        "Automated test coverage has not been brought up in retro meetings despite accounting for 30% of sprint blockers. The coach recommends adding test automation as a pre-retro topic.",
+        0.75,
+        JSON.stringify(["sprint-20", "sprint-21", "sprint-24"])
+      );
+
+      // Reset Jira counter
+      this.db.exec(`UPDATE mock_jira_counter SET counter = 1004 WHERE id = 1`);
+    });
+
+    txn();
+    return Promise.resolve({ success: true });
   }
 }
 

@@ -253,4 +253,7 @@ export const retroClient = {
   listSlackNotifications: (projectId?: string) => invoke<CoachSlackNotification[]>("coach.listSlackNotifications", { projectId }),
   sendSlack: (data: { projectId?: string; recipientName: string; messageType: string; content: string }) =>
     invoke<CoachSlackNotification>("coach.sendSlack", data),
+
+  // Demo operations
+  resetDemoData: () => invoke<{ success: boolean }>("demo.resetData", {}),
 };

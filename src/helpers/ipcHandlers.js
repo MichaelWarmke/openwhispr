@@ -1707,6 +1707,7 @@ class IPCHandlers {
         "coach.listInsights",
         "coach.listSlackNotifications",
         "coach.sendSlack",
+        "demo.resetData",
       ]);
 
       if (!ALLOWED_OPS.has(op)) {
@@ -1793,15 +1794,47 @@ class IPCHandlers {
           return repo.listInsights(payload?.projectId);
         case "coach.listSlackNotifications":
           return repo.listSlackNotifications(payload?.projectId);
-        case "coach.sendSlack":
+        case "coach.sendSlack": {
+          const { projectId, recipientName, messageType, content } = payload;
+
+          let finalContent = content;
+          if (!finalContent || finalContent.startsWith("[TEST")) {
+            switch (messageType) {
+              case "preRetroPreview":
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n📋 *Pre-Retro Discussion Agenda Preview*\nTarget Channel/Recipient: ${recipientName || "Team Channel"}\n\nCoach Suggested Agenda Topics for upcoming Retrospective:\n• ⚡ *PR Size Optimization & Fast Review SLAs* (Turnaround SLA < 24h)\n• 📈 *Sustaining 100% Completion Velocity* (Zero-blocker sprint analysis)\n\n👉 Team members: Please review and mark accepted topics before the retro kick-off meeting!`;
+                break;
+              case "ownerReminder":
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n⏰ *Action Item Owner Reminder*\nTarget Recipient: ${recipientName || "Action Item Owners"}\n\nReminder for assigned retro action items:\n• 📌 *Create GitHub PR template with 300 LOC guidelines* (Marcus Vance — 2 hours est.)\n• 📌 *Draft initial PR review response time SLA* (Sarah Jenkins — 1 day est.)\n\nPlease check in status before the sprint boundary!`;
+                break;
+              case "metricAlert":
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n🚨 *Sprint Metric Alert*\nTarget Channel: ${recipientName || "Engineering Leads"}\n\n• *Burndown Trend*: Behind trend (29/40 completed points)\n• *Active Blockers*: 3 PR review bottlenecks on API Gateway\n\n💡 *Coach Recommendation*: Focus engineering effort on clearing API Gateway code reviews today to recover sprint commitment.`;
+                break;
+              case "postRetroSummary":
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n📊 *Post-Retro Personal Summary*\nTarget Recipient: ${recipientName || "Team Members"}\n\n• Retrospective session completed successfully.\n• 3 new action items created and synced to Jira (AGILE-1004, AGILE-1005).\n• Accepted coach discussion topics recorded for team velocity playbook.`;
+                break;
+              case "actionFollowup":
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n🔄 *Mid-Sprint Action Item Follow-Up*\nTarget Recipient: ${recipientName || "Team Channel"}\n\n• Carried-over action items status check: 2 of 3 carried items resolved!\n• Remaining carried item: *Setup automated performance regression benchmark check in CI* (Jordan Smith)`;
+                break;
+              case "insightShare":
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n💡 *Agile Coach Team Insight Share*\nTarget Channel: ${recipientName || "Team Channel"}\n\n• *Detected Pattern*: PR review delays on API gateway reviews appeared as blockers in 3 of the last 4 sprints.\n• *Impact*: Team velocity improves by +24% when code review SLA is explicitly discussed.`;
+                break;
+              default:
+                finalContent = `🤖 [Agile Coach Agent via MCP Dispatch]\n\n📢 *Agile Coach Notification*\nTarget Recipient: ${recipientName || "Team"}\n\nAutomated dispatch for trigger '${messageType}' delivered successfully.`;
+                break;
+            }
+          }
+
           return repo.saveSlackNotification({
-            project_id: payload.projectId || "proj-default-gen-eng",
-            recipient_name: payload.recipientName,
+            project_id: projectId || "proj-default-gen-eng",
+            recipient_name: recipientName || "Team Channel",
             recipient_slack_id: payload.recipientSlackId || "",
-            message_type: payload.messageType,
-            message_content: payload.content,
+            message_type: messageType,
+            message_content: finalContent,
             status: "sent",
           });
+        }
+        case "demo.resetData":
+          return repo.resetDemoData();
         default:
           throw new Error(`Unsupported retro op: ${op}`);
       }
@@ -7932,10 +7965,16 @@ class IPCHandlers {
     ipcMain.handle("get-stt-config", async (event) => {
       try {
         const apiUrl = getApiUrl();
-        if (!apiUrl) throw new Error("OpenWhispr API URL not configured");
+        if (!apiUrl) {
+          debugLogger.debug("STT config fetch skipped: OpenWhispr API URL not configured");
+          return { success: false, error: "OpenWhispr API URL not configured", code: "NO_API_URL" };
+        }
 
         const authHeader = await getAuthHeader(event);
-        if (!Object.keys(authHeader).length) throw new Error("Not authenticated");
+        if (!Object.keys(authHeader).length) {
+          debugLogger.debug("STT config fetch skipped: Not authenticated");
+          return { success: false, error: "Not authenticated", code: "NOT_AUTHENTICATED" };
+        }
 
         const response = await proxyFetch(`${apiUrl}/api/stt-config`, {
           headers: authHeader,
@@ -7962,10 +8001,16 @@ class IPCHandlers {
     ipcMain.handle("get-note-recording-config", async (event) => {
       try {
         const apiUrl = getApiUrl();
-        if (!apiUrl) throw new Error("OpenWhispr API URL not configured");
+        if (!apiUrl) {
+          debugLogger.debug("Note recording config fetch skipped: OpenWhispr API URL not configured");
+          return { success: false, error: "OpenWhispr API URL not configured", code: "NO_API_URL" };
+        }
 
         const authHeader = await getAuthHeader(event);
-        if (!Object.keys(authHeader).length) throw new Error("Not authenticated");
+        if (!Object.keys(authHeader).length) {
+          debugLogger.debug("Note recording config fetch skipped: Not authenticated");
+          return { success: false, error: "Not authenticated", code: "NOT_AUTHENTICATED" };
+        }
 
         const response = await proxyFetch(`${apiUrl}/api/note-recording-config`, {
           headers: authHeader,
